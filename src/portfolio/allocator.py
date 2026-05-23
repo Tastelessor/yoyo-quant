@@ -16,6 +16,10 @@ def equal_weight(
     For each date, allocate capital equally among stocks with signal=1.
     Shares are rounded down to nearest 100 (A 股手数).
 
+    This is a per-date target calculator: each date is allocated the
+    full capital independently. It does not track consumed capital
+    across dates. For capital-aware execution, pipe through backtest.
+
     Parameters
     ----------
     signals : DataFrame
@@ -23,7 +27,7 @@ def equal_weight(
     prices : DataFrame
         Price data with columns: date, code, close.
     capital : float
-        Total capital to allocate.
+        Total capital to allocate per date.
 
     Returns
     -------

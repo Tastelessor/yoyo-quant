@@ -9,8 +9,11 @@ import pandas as pd
 class BacktestEngine:
     """Simple event-driven backtest engine.
 
-    Iterates over dates, executes buy/sell signals at close price,
-    tracks cash + positions, and computes equity curve + metrics.
+    Accepts pre-allocated positions (from portfolio + risk modules),
+    executes buy/sell at close price, tracks cash + holdings,
+    and computes equity curve + metrics.
+
+    Data flow: signals -> portfolio -> risk -> BacktestEngine -> visualization
     """
 
     def __init__(self, capital: float = 1_000_000):
@@ -19,17 +22,18 @@ class BacktestEngine:
 
     def run(
         self,
-        signals: pd.DataFrame,
+        positions: pd.DataFrame,
         prices: pd.DataFrame,
     ) -> dict:
-        """Run backtest.
+        """Run backtest on pre-allocated positions.
 
         Parameters
         ----------
-        signals : DataFrame
-            Signal data (date, code, signal, confidence).
+        positions : DataFrame
+            Target positions (date, code, weight, shares).
+            Output of portfolio.allocator + risk.position_limit.
         prices : DataFrame
-            OHLCV or price data (date, code, close).
+            Price data (date, code, close).
 
         Returns
         -------
@@ -37,94 +41,82 @@ class BacktestEngine:
             keys: trades (DataFrame), equity_curve (DataFrame), metrics (dict).
         """
         self.cash = self.initial_capital
-        positions: dict[str, int] = {}  # code -> shares held
+        holdings: dict[str, int] = {}  # code -> shares held
+        entry_prices: dict[str, float] = {}  # code -> buy price
         trades = []
         equity_rows = []
 
         all_dates = sorted(prices["date"].unique())
         price_map = prices.set_index(["date", "code"])["close"].to_dict()
 
+        pos_cols = ["date", "code", "weight", "shares"]
+        if positions.empty:
+            positions = pd.DataFrame(columns=pos_cols)
+
         for date in all_dates:
-            if signals.empty:
-                day_signals = pd.DataFrame()
-            else:
-                day_signals = signals[signals["date"] == date]
+            day_pos = positions[positions["date"] == date]
             day_prices = {
                 code: price_map[(date, code)]
                 for code in prices[prices["date"] == date]["code"]
                 if (date, code) in price_map
             }
 
-            # Execute signals
-            for _, sig in day_signals.iterrows():
-                code = sig["code"]
-                price = day_prices.get(code)
-                if price is None:
-                    continue
+            target = {
+                code: shares
+                for code, shares in zip(day_pos["code"], day_pos["shares"])
+                if shares > 0
+            }
 
-                if sig["signal"] == 1 and code not in positions:
-                    # Buy: allocate equal portion of available cash
-                    buy_codes = day_signals[day_signals["signal"] == 1]["code"].tolist()
-                    alloc = self.cash / len(buy_codes) if buy_codes else 0
-                    shares = int(alloc / price / 100) * 100
+            # Sell positions not in target
+            for code in list(holdings):
+                if code not in target:
+                    price = day_prices.get(code)
+                    if price is None or (isinstance(price, float) and np.isnan(price)):
+                        continue
+                    shares = holdings.pop(code)
+                    self.cash += shares * price
+                    ep = entry_prices.pop(code, price)
+                    pnl = shares * (price - ep)
+                    trades.append({
+                        "date": date, "code": code, "action": "sell",
+                        "price": price, "shares": shares, "pnl": pnl,
+                    })
+
+            # Buy positions not in holdings
+            for code, target_shares in target.items():
+                if code not in holdings:
+                    price = day_prices.get(code)
+                    if price is None or (isinstance(price, float) and np.isnan(price)):
+                        continue
+                    shares = min(
+                        int(self.cash / price / 100) * 100,
+                        target_shares,
+                    )
                     if shares > 0 and shares * price <= self.cash:
                         self.cash -= shares * price
-                        positions[code] = shares
-                        trades.append(
-                            {
-                                "date": date,
-                                "code": code,
-                                "action": "buy",
-                                "price": price,
-                                "shares": shares,
-                                "pnl": 0.0,
-                            }
-                        )
+                        holdings[code] = shares
+                        entry_prices[code] = price
+                        trades.append({
+                            "date": date, "code": code, "action": "buy",
+                            "price": price, "shares": shares, "pnl": 0.0,
+                        })
 
-                elif sig["signal"] == -1 and code in positions:
-                    # Sell
-                    shares = positions.pop(code)
-                    proceeds = shares * price
-                    self.cash += proceeds
-                    # PnL vs entry (approximate: use first buy price if available)
-                    entry_price = next(
-                        (t["price"] for t in trades
-                         if t["code"] == code and t["action"] == "buy"),
-                        price,
-                    )
-                    pnl = shares * (price - entry_price)
-                    trades.append(
-                        {
-                            "date": date,
-                            "code": code,
-                            "action": "sell",
-                            "price": price,
-                            "shares": shares,
-                            "pnl": pnl,
-                        }
-                    )
-
-            # Calculate end-of-day equity
+            # End-of-day equity
             pos_value = sum(
-                shares * day_prices.get(code, 0) for code, shares in positions.items()
+                shares * day_prices.get(code, 0)
+                for code, shares in holdings.items()
             )
             equity = self.cash + pos_value
-            equity_rows.append(
-                {
-                    "date": date,
-                    "equity": equity,
-                    "cash": self.cash,
-                    "position_value": pos_value,
-                    "returns": 0.0,  # filled below
-                }
-            )
+            equity_rows.append({
+                "date": date, "equity": equity, "cash": self.cash,
+                "position_value": pos_value, "returns": 0.0,
+            })
 
         cols_t = ["date", "code", "action", "price", "shares", "pnl"]
         cols_eq = ["date", "equity", "cash", "position_value", "returns"]
         trades_df = pd.DataFrame(trades, columns=cols_t)
         eq_df = pd.DataFrame(equity_rows, columns=cols_eq)
 
-        # Calculate daily returns
         if len(eq_df) > 1:
             eq_df["returns"] = eq_df["equity"].pct_change().fillna(0.0)
 
@@ -141,14 +133,12 @@ class BacktestEngine:
 
         total_return = (final - initial) / initial if initial > 0 else 0.0
 
-        # Annualized return (252 trading days)
         n_days = len(eq)
         if n_days > 1 and total_return > -1:
             annual_return = (1 + total_return) ** (252 / n_days) - 1
         else:
             annual_return = 0.0
 
-        # Sharpe ratio (risk-free rate = 3%)
         daily_rf = 0.03 / 252
         returns = eq["returns"].values
         excess = returns - daily_rf
@@ -158,13 +148,11 @@ class BacktestEngine:
             else 0.0
         )
 
-        # Max drawdown
         equity = eq["equity"].values
         peak = np.maximum.accumulate(equity)
         drawdown = (equity - peak) / np.where(peak > 0, peak, 1)
         max_drawdown = abs(drawdown.min())
 
-        # Win rate
         sell_trades = trades[trades["action"] == "sell"]
         if len(sell_trades) > 0:
             win_rate = (sell_trades["pnl"] > 0).mean()

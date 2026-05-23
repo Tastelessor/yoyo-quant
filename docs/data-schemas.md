@@ -46,7 +46,19 @@
 | weight | float64 | 目标权重 0-1 |
 | shares | int | 目标股数 |
 
-## 风控约束 — risk 模块输出
+## 风控 — risk 模块输出
+
+### 仓位调整（position_limit）
+
+`apply_position_limit` 是仓位数据的变换器：输入仓位 DataFrame，输出同结构的调整后仓位。
+输出 schema 与仓位数据相同（date, code, weight, shares）。
+
+### 可交易性过滤（tradability）
+
+`filter_tradable` / `enforce_t1` 是信号数据的变换器：输入信号 DataFrame，输出同结构的过滤后信号。
+输出 schema 与信号数据相同（date, code, signal, confidence）。
+
+### 风控约束报告（预留）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|

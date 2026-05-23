@@ -121,5 +121,5 @@ def plot_backtest_summary(result: dict) -> plt.Figure:
         )
         fig.suptitle(text, fontsize=9, y=0.98)
 
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     return fig

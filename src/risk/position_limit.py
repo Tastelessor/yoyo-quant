@@ -53,7 +53,8 @@ def apply_position_limit(
             if uncapped.any():
                 weights[uncapped] += total_excess / uncapped.sum()
             else:
-                weights += total_excess / len(weights)
+                # All capped — excess becomes cash, don't redistribute
+                break
 
         chunk["weight"] = weights
         # Recalculate shares proportionally

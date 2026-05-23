@@ -64,6 +64,39 @@ def test_cap_preserves_order(concentrated_positions):
     assert set(result["code"]) == {"000001", "600519", "000858"}
 
 
+def test_all_positions_exceed_cap():
+    """When all exceed max_weight, all capped at max, sum < 1."""
+    positions = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-02"] * 2),
+            "code": ["000001", "600519"],
+            "weight": [0.6, 0.4],
+            "shares": [6000, 200],
+        }
+    )
+    result = apply_position_limit(positions, max_weight=0.3)
+    weights = result.sort_values("code")["weight"].values
+    # Both capped at 0.3, excess dropped (becomes cash)
+    assert weights[0] <= 0.3 + 1e-8
+    assert weights[1] <= 0.3 + 1e-8
+    # Sum < 1 because excess is dropped
+    assert weights.sum() < 1.0
+
+
+def test_single_stock_exceeds_cap():
+    """Single stock at 1.0, capped to max_weight."""
+    positions = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-02"]),
+            "code": ["000001"],
+            "weight": [1.0],
+            "shares": [10000],
+        }
+    )
+    result = apply_position_limit(positions, max_weight=0.3)
+    assert result.iloc[0]["weight"] <= 0.3 + 1e-8
+
+
 def test_zero_max_weight():
     """max_weight=0 → all weights become 0."""
     positions = pd.DataFrame(

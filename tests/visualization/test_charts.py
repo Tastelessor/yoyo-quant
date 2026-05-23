@@ -1,13 +1,18 @@
 """Visualization chart tests."""
 
 import matplotlib
+
 matplotlib.use("Agg")  # non-interactive backend for testing
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
 
-from src.visualization.charts import plot_drawdown, plot_equity_curve, plot_backtest_summary
+from src.visualization.charts import (
+    plot_backtest_summary,
+    plot_drawdown,
+    plot_equity_curve,
+)
 
 
 @pytest.fixture
@@ -28,7 +33,9 @@ def equity_curve():
 @pytest.fixture
 def backtest_result(equity_curve):
     return {
-        "trades": pd.DataFrame(columns=["date", "code", "action", "price", "shares", "pnl"]),
+        "trades": pd.DataFrame(
+            columns=["date", "code", "action", "price", "shares", "pnl"]
+        ),
         "equity_curve": equity_curve,
         "metrics": {
             "total_return": 0.035,
@@ -60,14 +67,16 @@ def test_plot_backtest_summary_returns_figure(backtest_result):
 
 
 def test_plot_equity_curve_empty():
-    empty = pd.DataFrame(columns=["date", "equity", "cash", "position_value", "returns"])
+    cols = ["date", "equity", "cash", "position_value", "returns"]
+    empty = pd.DataFrame(columns=cols)
     fig = plot_equity_curve(empty)
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
 
 
 def test_plot_drawdown_empty():
-    empty = pd.DataFrame(columns=["date", "equity", "cash", "position_value", "returns"])
+    cols = ["date", "equity", "cash", "position_value", "returns"]
+    empty = pd.DataFrame(columns=cols)
     fig = plot_drawdown(empty)
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
