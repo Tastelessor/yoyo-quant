@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import pandas as pd
 
-from src.strategies.mean_reversion import mean_reversion_signal
+from src.strategies.builtin.mean_reversion import mean_reversion_signal
 
 if TYPE_CHECKING:
     pass

@@ -1,5 +1,21 @@
-import numpy as np
 import pandas as pd
+
+from src.strategies.base import Strategy
+from src.strategies.registry import register_strategy
+
+
+@register_strategy("mean_reversion")
+class MeanReversionStrategy(Strategy):
+    """Mean reversion strategy (Bollinger Band style)."""
+
+    name = "mean_reversion"
+
+    def __init__(self, window: int = 20, num_std: float = 2.0):
+        self.window = window
+        self.num_std = num_std
+
+    def generate_signal(self, data, factors=None):
+        return mean_reversion_signal(data, window=self.window, num_std=self.num_std)
 
 
 def mean_reversion_signal(

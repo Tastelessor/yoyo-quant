@@ -2,7 +2,8 @@ import pandas as pd
 import pytest
 
 from src.data.filters import detect_limit_price, detect_suspension
-from src.risk.tradability import enforce_t1, filter_tradable
+from src.risk.rules import RuleContext
+from src.risk.tradability import T1Rule, TradabilityRule, enforce_t1, filter_tradable
 
 
 @pytest.fixture
@@ -122,3 +123,79 @@ def test_t1_no_conflict():
     )
     result = enforce_t1(signals)
     assert list(result["signal"]) == [1, -1]
+
+
+# --- TradabilityRule (Rule ABC wrapper) ---
+
+
+def test_tradability_rule_name_and_priority():
+    rule = TradabilityRule()
+    assert rule.name == "tradability"
+    assert rule.priority == 200
+
+
+def test_tradability_rule_filters_limit_up(annotated_market):
+    signals = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-03"]),
+            "code": "000001.SZ",
+            "signal": [1],
+            "confidence": [0.8],
+        }
+    )
+    ctx = RuleContext(
+        signals=signals,
+        positions=pd.DataFrame(),
+        market_data=annotated_market,
+    )
+    rule = TradabilityRule()
+    result = rule.apply(ctx)
+    assert result.signals["signal"].iloc[0] == 0
+
+
+def test_tradability_rule_returns_rule_context(annotated_market):
+    signals = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-04"]),
+            "code": "000001.SZ",
+            "signal": [-1],
+            "confidence": [0.6],
+        }
+    )
+    ctx = RuleContext(
+        signals=signals,
+        positions=pd.DataFrame(),
+        market_data=annotated_market,
+    )
+    rule = TradabilityRule()
+    result = rule.apply(ctx)
+    assert isinstance(result, RuleContext)
+
+
+# --- T1Rule (Rule ABC wrapper) ---
+
+
+def test_t1_rule_name_and_priority():
+    rule = T1Rule()
+    assert rule.name == "t1"
+    assert rule.priority == 210
+
+
+def test_t1_rule_same_day_buy_wins():
+    signals = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-02", "2024-01-02"]),
+            "code": "000001.SZ",
+            "signal": [1, -1],
+            "confidence": [0.8, 0.7],
+        }
+    )
+    ctx = RuleContext(
+        signals=signals,
+        positions=pd.DataFrame(),
+        market_data=pd.DataFrame(),
+    )
+    rule = T1Rule()
+    result = rule.apply(ctx)
+    assert result.signals[result.signals["signal"] == 1].shape[0] == 1
+    assert result.signals[result.signals["signal"] == 0].shape[0] == 1

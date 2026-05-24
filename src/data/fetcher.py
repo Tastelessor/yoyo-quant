@@ -57,3 +57,44 @@ def fetch_daily(code: str, start: str, end: str) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date").reset_index(drop=True)
     return df[["date", "code", "open", "high", "low", "close", "volume"]]
+
+
+def fetch_index_daily(code: str, start: str, end: str) -> pd.DataFrame:
+    """获取指数日线行情 (tushare index_daily)。
+
+    Parameters
+    ----------
+    code : str
+        指数代码，如 "000300"（沪深300）。
+    start : str
+        开始日期，格式 "YYYY-MM-DD"。
+    end : str
+        结束日期，格式 "YYYY-MM-DD"。
+
+    Returns
+    -------
+    DataFrame
+        包含 date, code, open, high, low, close, volume 列。
+    """
+    token = os.environ.get("TUSHARE_TOKEN", "")
+    if not token:
+        raise ValueError("TUSHARE_TOKEN 未设置，请在 .env 中配置")
+
+    api = ts.pro_api(token)
+    api._DataApi__http_url = _PROXY_URL
+
+    ts_code = _to_ts_code(code)
+    raw = api.index_daily(
+        ts_code=ts_code,
+        start_date=start.replace("-", ""),
+        end_date=end.replace("-", ""),
+    )
+
+    if raw is None or raw.empty:
+        return pd.DataFrame(columns=["date", "code", "open", "high", "low", "close", "volume"])
+
+    df = raw.rename(columns={"trade_date": "date", "vol": "volume"})
+    df["code"] = code
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date").reset_index(drop=True)
+    return df[["date", "code", "open", "high", "low", "close", "volume"]]

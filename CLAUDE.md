@@ -11,8 +11,57 @@
 1. **查耦合**：grep 确认依赖面，评估影响范围
 2. **改实现**：移动代码，调整函数签名（如 risk 层接收已标注数据，不再自己调 data 层）
 3. **拆测试**：测试跟着实现走，按新模块边界拆分
-4. **更新契约**：同步更新 data-schemas.md、__init__.py 导出、project-plan.md 函数引用
+4. **更新契约**：同步更新 data-schemas.md、__init__.py 导出、project-plan.md、history.md 函数引用
 5. **跑测试**：确认全部通过
+
+## 规则引擎规范
+
+### 架构
+- 所有风控规则继承 `Rule` ABC 基类（`src/risk/rules.py`）
+- 规则通过 `RuleContext` 数据总线通信，不直接依赖其他规则
+- `RuleEngine` 只负责按 priority 排序执行，不含业务逻辑
+
+### 优先级分区
+| 区域 | 范围 | 说明 |
+|------|------|------|
+| 信号生成 | 0-99 | 策略层规则 |
+| 风控过滤 | 100-199 | 止损、仓位限制 |
+| 交易约束 | 200-299 | T+1、涨跌停 |
+
+新规则加入时选一个区域即可，区域内按注册顺序执行。
+
+### 规则编写约定
+- 每个规则必须设置 `name` 和 `priority`
+- `apply()` 必须返回更新后的 `RuleContext`，不能返回 None
+- 规则间通过 `ctx.metadata` 传递额外信息，不能直接调用其他规则
+- 原有独立函数（如 `apply_position_limit`）保留不删除，Rule 子类内部调用它们
+
+### 修改注意事项
+- 新增规则：实现 Rule ABC，写测试，选好 priority 区域
+- 修改现有规则：不能改变 apply() 的输入输出契约
+- 修改引擎：极度谨慎，引擎应该是最稳定的组件
+- 跨规则依赖：必须通过 ctx.metadata，不能 import 其他规则
+
+## 策略框架规范
+
+### 架构
+- 所有策略继承 `Strategy` ABC 基类（`src/strategies/base.py`）
+- 策略通过注册表（`src/strategies/registry.py`）按名获取
+- 信号组合器（`src/strategies/combiner.py`）支持加权投票和层级过滤
+
+### 策略编写约定
+- 实现 `name` 属性和 `generate_signal(data, factors=None)` 方法
+- 返回 DataFrame（date, code, signal, confidence），signal 为 int（1/-1/0）
+- 用 `@register_strategy("name")` 装饰器注册
+- 原有独立函数（如 `mean_reversion_signal`）保留不删除，Strategy 子类内部调用它们
+- 具体策略放在 `strategies/builtin/`，框架代码在 `strategies/` 顶层
+
+### 配置系统
+- YAML 配置文件在 `configs/` 目录
+- `load_config(path)` 加载并验证
+- `build_strategies(cfg)` 从配置构建策略/组合器
+- `build_risk_engine(cfg)` 从配置构建规则引擎
+- 风险规则通过 `src/risk/rule_registry.py` 注册，名称映射到 Rule 子类
 
 ## 开工前检查
 - **每个新 phase 开始前**，先 invoke `karpathy-guidelines` skill，读完再写代码
@@ -128,10 +177,11 @@ data → factors → strategies → portfolio → risk ─┤
 - 数据处理函数返回迭代器或分块结果
 
 ## 项目计划
-- 计划文件：`docs/project-plan.md`（架构概览 + 阶段任务 + 进度跟踪 + 决策记录）
-- 执行方式：每个 phase 开始时读取 project-plan.md，用 TodoWrite 拆出当前 phase 的具体 task
-- 完成 task 后更新 project-plan.md 中的 checkbox 和状态表
-- 重大方向调整时更新决策记录
+- 当前状态：`docs/project-plan.md`（架构概览 + 模块状态表 + 目录结构）
+- 历史记录：`docs/history.md`（已完成 Phase 的详细任务、回测结果、决策记录）
+- 执行方式：每个 phase 开始时读取 project-plan.md 了解全局状态，用 TodoWrite 拆出当前 phase 的具体 task
+- 完成 task 后更新 project-plan.md 状态表，详细变更记录到 history.md
+- 重大方向调整时更新 history.md 决策记录
 
 ## 代码规范
 - 类型注解：鼓励但暂不强制 mypy

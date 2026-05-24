@@ -1,0 +1,69 @@
+universe:
+  codes:
+    # Banking (8)
+    - "600036"  # 招商银行
+    - "601166"  # 兴业银行
+    - "601318"  # 中国平安
+    - "601398"  # 工商银行
+    - "601939"  # 建设银行
+    - "601288"  # 农业银行
+    - "601328"  # 交通银行
+    - "600016"  # 民生银行
+    # Liquor (8)
+    - "600519"  # 贵州茅台
+    - "000858"  # 五粮液
+    - "000568"  # 泸州老窖
+    - "002304"  # 洋河股份
+    - "600809"  # 山西汾酒
+    - "000799"  # 酒鬼酒
+    - "603369"  # 今世缘
+    - "600779"  # 水井坊
+    # Home appliance (8)
+    - "000333"  # 美的集团
+    - "000651"  # 格力电器
+    - "600690"  # 海尔智家
+    - "000100"  # TCL科技
+    - "000521"  # 长虹美菱
+    - "002032"  # 苏泊尔
+    - "603868"  # 飞科电器
+    - "002242"  # 九阳股份
+    # Brokerage (8)
+    - "600030"  # 中信证券
+    - "300059"  # 东方财富
+    - "601688"  # 华泰证券
+    - "601211"  # 国泰君安
+    - "600837"  # 海通证券
+    - "000776"  # 广发证券
+    - "601878"  # 浙商证券
+    - "601066"  # 中信建投
+  filters:
+    exclude_st: true
+  start_date: "2023-01-01"
+  end_date: "2026-05-23"
+
+portfolio:
+  allocator: equal_weight
+  capital: 1_000_000
+
+strategies:
+  rules:
+    - name: pair_trading
+      params:
+        # 经过 walk-forward 验证的最优配对和参数
+        # 配对筛选标准：p-value < 0.10 AND half-life < 60 天
+        pairs:
+          - ["600016", "601166"]  # 民生 vs 兴业 (p=0.097, hl=23天)
+        entry_zscore: 1.2
+        exit_zscore: 0.3
+        lookback: 30
+        beta_method: "ols"
+      weight: 1.0
+
+risk:
+  rules:
+    - name: fixed_stop_loss
+      params: { threshold: -0.08 }
+    - name: position_limit
+      params: { max_weight: 0.3 }
+    - name: tradability
+    - name: t1

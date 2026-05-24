@@ -16,6 +16,8 @@ dependencies = [
     "matplotlib>=3.7",
     "plotly>=5.15",
     "pyarrow>=14.0",
+    "pyyaml>=6.0",
+    "statsmodels>=0.14",
 ]
 
 [project.optional-dependencies]

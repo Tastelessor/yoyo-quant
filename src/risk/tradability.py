@@ -8,6 +8,34 @@ from __future__ import annotations
 
 import pandas as pd
 
+from src.risk.rules import Rule, RuleContext
+
+
+class TradabilityRule(Rule):
+    """Rule wrapper for filter_tradable.
+
+    Reads limit_up / limit_down / is_suspended from market_data,
+    filters untradeable signals in-place.
+    """
+
+    name = "tradability"
+    priority = 200
+
+    def apply(self, ctx: RuleContext) -> RuleContext:
+        ctx.signals = filter_tradable(ctx.market_data, ctx.signals)
+        return ctx
+
+
+class T1Rule(Rule):
+    """Rule wrapper for enforce_t1 (T+1 constraint)."""
+
+    name = "t1"
+    priority = 210
+
+    def apply(self, ctx: RuleContext) -> RuleContext:
+        ctx.signals = enforce_t1(ctx.signals)
+        return ctx
+
 
 def filter_tradable(
     market: pd.DataFrame,

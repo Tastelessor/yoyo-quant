@@ -27,6 +27,12 @@
 | hv | float64 | 历史波动率（默认 20 日，可配置） |
 | iv | float64 | 隐含波动率（期权标的） |
 | pcr | float64 | 看跌看涨比 |
+| rsi | float64 | RSI 相对强弱指标（默认 14 日，可配置） |
+| obv | float64 | OBV 能量潮 |
+| volume_ratio | float64 | 成交量比率（当前 / 均量，默认 20 日） |
+| atr | float64 | ATR 平均真实波幅（默认 14 日，可配置） |
+| spread | float64 | 配对价差（log(A) - beta*log(B)） |
+| spread_zscore | float64 | 价差滚动 z-score |
 
 ## 信号数据 — strategies 模块输出
 
@@ -45,6 +51,7 @@
 | code | str | 股票代码 |
 | weight | float64 | 目标权重 0-1 |
 | shares | int | 目标股数 |
+| avg_cost | float64 | 持仓均价（可选，止损规则使用） |
 
 ## 风控 — risk 模块输出
 

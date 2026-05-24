@@ -10,6 +10,7 @@ def equal_weight(
     signals: pd.DataFrame,
     prices: pd.DataFrame,
     capital: float = 1_000_000,
+    exposure: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Equal-weight allocation among buy signals.
 
@@ -28,6 +29,10 @@ def equal_weight(
         Price data with columns: date, code, close.
     capital : float
         Total capital to allocate per date.
+    exposure : Series | None
+        Optional exposure fraction per date (indexed by date).
+        When provided, per-date capital = capital * exposure[date].
+        Dates not in the Series default to 1.0.
 
     Returns
     -------
@@ -49,8 +54,17 @@ def equal_weight(
     # Equal weight per date
     count_per_date = merged.groupby("date")["code"].transform("count")
     result["weight"] = 1.0 / count_per_date
+
+    # Apply exposure scaling per date
+    if exposure is not None:
+        date_capital = merged["date"].map(
+            lambda d: capital * exposure.get(d, 1.0)
+        )
+    else:
+        date_capital = pd.Series(capital, index=merged.index)
+
     # Share calculation: allocate capital * weight, round down to 100
-    alloc = capital * result["weight"]
+    alloc = date_capital * result["weight"]
     result["shares"] = np.floor(alloc / merged["close"] / 100).astype(int) * 100
     # Where close is NaN, shares = 0
     result.loc[merged["close"].isna(), "shares"] = 0

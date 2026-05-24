@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.risk.position_limit import apply_position_limit
+from src.risk.position_limit import PositionLimitRule, apply_position_limit
+from src.risk.rules import RuleContext
 
 
 @pytest.fixture
@@ -134,3 +135,41 @@ def test_multi_day_positions():
         day = result[result["date"] == date]
         assert day["weight"].max() <= 0.5 + 1e-8
         np.testing.assert_allclose(day["weight"].sum(), 1.0, atol=1e-8)
+
+
+# --- PositionLimitRule (Rule ABC wrapper) ---
+
+
+@pytest.fixture
+def rule_ctx(positions):
+    """RuleContext wrapping the positions fixture."""
+    return RuleContext(
+        signals=pd.DataFrame(),
+        positions=positions,
+        market_data=pd.DataFrame(),
+    )
+
+
+def test_rule_name_and_priority():
+    rule = PositionLimitRule(max_weight=0.5)
+    assert rule.name == "position_limit"
+    assert rule.priority == 150
+
+
+def test_rule_caps_position(rule_ctx):
+    rule = PositionLimitRule(max_weight=0.5)
+    result = rule.apply(rule_ctx)
+    assert result.positions["weight"].max() <= 0.5 + 1e-8
+
+
+def test_rule_returns_rule_context(rule_ctx):
+    rule = PositionLimitRule(max_weight=0.5)
+    result = rule.apply(rule_ctx)
+    assert isinstance(result, RuleContext)
+
+
+def test_rule_preserves_signals_and_market_data(rule_ctx):
+    rule = PositionLimitRule(max_weight=0.5)
+    result = rule.apply(rule_ctx)
+    pd.testing.assert_frame_equal(result.signals, rule_ctx.signals)
+    pd.testing.assert_frame_equal(result.market_data, rule_ctx.market_data)

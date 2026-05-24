@@ -1,0 +1,73 @@
+universe:
+  codes:
+    - "600036"  # 招商银行
+    - "601318"  # 中国平安
+    - "600030"  # 中信证券
+    - "601166"  # 兴业银行
+    - "600519"  # 贵州茅台
+    - "000858"  # 五粮液
+    - "000568"  # 泸州老窖
+    - "000333"  # 美的集团
+    - "000651"  # 格力电器
+    - "603288"  # 海天味业
+    - "600276"  # 恒瑞医药
+    - "300760"  # 迈瑞医疗
+    - "000538"  # 云南白药
+    - "002415"  # 海康威视
+    - "000725"  # 京东方A
+    - "603986"  # 兆易创新
+    - "002230"  # 科大讯飞
+    - "300750"  # 宁德时代
+    - "002594"  # 比亚迪
+    - "601012"  # 隆基绿能
+    - "600585"  # 海螺水泥
+    - "600019"  # 宝钢股份
+    - "000002"  # 万科A
+    - "601668"  # 中国建筑
+    - "600028"  # 中国石化
+    - "601857"  # 中国石油
+    - "600900"  # 长江电力
+    - "600941"  # 中国移动
+    - "002602"  # 世纪华通
+    - "688981"  # 中芯国际
+  filters:
+    exclude_st: true
+  start_date: "2023-01-01"
+  end_date: "2026-05-23"
+
+portfolio:
+  allocator: equal_weight
+  capital: 1_000_000
+
+strategies:
+  market_regime:
+    ma_short: 50
+    ma_long: 200
+    exposure:
+      bullish: 1.0
+      neutral: 0.6
+      cautious: 0.4
+      bearish: 0.2
+  combiner:
+    type: weighted_vote
+    threshold: 0.0
+  rules:
+    - name: multifactor
+      params:
+        momentum_window: 20
+        rsi_window: 14
+        hv_window: 20
+        vol_window: 20
+        rebalance: 20
+        top_n: 5
+        bottom_n: 3
+      weight: 1.0
+
+risk:
+  rules:
+    - name: fixed_stop_loss
+      params: { threshold: -0.08 }
+    - name: position_limit
+      params: { max_weight: 0.3 }
+    - name: tradability
+    - name: t1

@@ -1,3 +1,14 @@
-from src.strategies.mean_reversion import mean_reversion_signal
+import src.strategies.builtin  # noqa: F401 — triggers strategy registration
 
-__all__ = ["mean_reversion_signal"]
+from src.strategies.base import Strategy
+from src.strategies.combiner import FilterCombiner, WeightedVoteCombiner
+from src.strategies.registry import get_strategy, list_strategies, register_strategy
+
+__all__ = [
+    "FilterCombiner",
+    "get_strategy",
+    "list_strategies",
+    "register_strategy",
+    "Strategy",
+    "WeightedVoteCombiner",
+]

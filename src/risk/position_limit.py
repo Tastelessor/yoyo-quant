@@ -5,6 +5,22 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from src.risk.rules import Rule, RuleContext
+
+
+class PositionLimitRule(Rule):
+    """Rule wrapper for apply_position_limit."""
+
+    name = "position_limit"
+    priority = 150
+
+    def __init__(self, max_weight: float = 0.3):
+        self.max_weight = max_weight
+
+    def apply(self, ctx: RuleContext) -> RuleContext:
+        ctx.positions = apply_position_limit(ctx.positions, self.max_weight)
+        return ctx
+
 
 def apply_position_limit(
     positions: pd.DataFrame,
