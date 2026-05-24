@@ -431,3 +431,75 @@
 ### 测试统计
 - 新增测试：22 (operators) + 26 (momentum) + 9 (registry) + 12 (gtja_momentum) + 14 (mean_reversion) + 6 (volume_price) + 7 (pipeline) + 11 (context) = 107 tests
 - 总测试数：400+ tests
+
+---
+
+## Phase 9: 股票池扩展 + Regime 检测改进 + 配置化
+
+### 目标
+扩展股票池到 100 只大市值股，改进 regime 检测信号质量，将策略配置写入 YAML。
+
+### Task 1: 股票池扩展 ✅
+- [x] 从 CSI 300 中按总市值取前 100（2026-05-22 数据）
+- [x] 最低 1565 亿（山西汾酒），最高 26422 亿（建设银行）
+- [x] 覆盖银行、非银金融、能源、通信、消费、医药、科技半导体、新能源、制造等板块
+- [x] 更新 `configs/default.yaml`
+
+### Task 2: Regime 检测改进 ✅
+- [x] 信号 1：breadth（close > SMA(20) 的股票占比）替代截面 sign(20d return).mean()
+- [x] 信号 2：已实现波动率（cross-sectional std of returns）+ 自适应 percentile 阈值
+- [x] EMA 平滑（span=5）减少单日噪声
+- [x] 最小持续期强制（min_persistence=7）确保 regime 块有意义
+- [x] 重写 regime.py 文档，用 pipeline 步骤清晰描述完整逻辑
+- [x] 19 个测试全部通过
+
+### Task 3: RegimeSwitchStrategy bug 修复 ✅
+- [x] 修复：子策略之前只接收当天数据（无法计算技术指标），改为传截止当天的全部历史数据
+- [x] 修复后 RegimeSwitch 能正确产生交易信号
+
+### Task 4: Reversed VWAP 注册 + 配置化 ✅
+- [x] `reversed_gtja_vwap` 注册到策略表（继承 GTJAVWAPStrategy，翻转信号）
+- [x] `configs/default.yaml` 新增 `strategies.regime_switch` 配置段
+- [x] `src/config/loader.py` 新增 `build_regime_switch(cfg)` 构建函数
+- [x] 配置映射：trend_up→gtja_momentum, trend_down→reversed_gtja_vwap, range→reversed_gtja_vwap, volatile→gtja_volatility
+
+### Walk-Forward 回测结果（20 只 CSI 300，2023-01 ~ 2026-05，train=252d，test=63d）
+
+**Baseline (reversed_gtja_vwap always) vs RegimeSwitch (GTJA)：**
+
+| 期间 | Dominant Regime | Baseline | RegimeSw | Diff |
+|------|----------------|----------|----------|------|
+| 2024-01 ~ 2024-04 | range | -2.52% | -2.52% | 0.00% |
+| 2024-04 ~ 2024-07 | range | +6.96% | +6.96% | 0.00% |
+| 2024-07 ~ 2024-10 | range | +40.90% | +17.32% | -23.57% |
+| 2024-11 ~ 2025-02 | range | +9.28% | +9.28% | 0.00% |
+| 2025-02 ~ 2025-05 | range | -0.35% | -6.59% | -6.24% |
+| 2025-05 ~ 2025-08 | range | -17.67% | +6.55% | **+24.22%** |
+| 2025-08 ~ 2025-11 | range | -0.77% | -0.77% | 0.00% |
+| 2025-11 ~ 2026-02 | range | -2.95% | -2.95% | 0.00% |
+
+| 指标 | Baseline | RegimeSwitch |
+|------|----------|-------------|
+| 平均收益 | +4.11% | +3.41% |
+| 累计收益 | +26.85% | +28.13% |
+| 赢的期数 | 7/8 | 1/8 |
+
+### 关键发现
+1. **RegimeSwitch 的价值在极端行情避险**：2025-05~08 期间 baseline 亏 -17.67%，RegimeSwitch 赚 +6.55%（+24.22% 优势）
+2. **大部分时期 diff=0**：dominant regime 全是 "range"，RegimeSwitch 也选 reversed_gtja_vwap，和 baseline 一样
+3. **代价是错过暴涨期**：2024-07~10 baseline 涨 +40.90%，RegimeSwitch 只涨 +17.32%
+4. **reversed_gtja_vwap 太强**（cum +26.85%），RegimeSwitch 很难持续跑赢
+5. **下一步**：行业维度分析策略表现，或用组合器替代硬切换
+
+### 测试统计
+- 新增测试：7 (regime 改进) + 1 (regime switch bug) + 1 (default params) = 9 tests
+- 总测试数：447 tests
+
+### 决策记录
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-05-24 | 股票池用 CSI 300 top 100 by market cap | 大市值股流动性好，避免小盘股噪声 |
+| 2026-05-24 | regime 用 breadth 而非 sign(20d return).mean() | 二值信号的 median 只有 -1/0/1，连续 breadth 更有区分度 |
+| 2026-05-24 | EMA + min_persistence 而非 majority vote | majority vote 在大窗口下反而增加切换 |
+| 2026-05-24 | reversed_gtja_vwap 直接注册而非配置时包装 | 简化 YAML 配置，避免 build_regime_switch 需要支持 wrapper |
+| 2026-05-24 | RegimeSwitch 用 GTJA 策略替代基础策略 | RevVWAP 是最强单策略（Sharpe 1.11），基础策略太弱 |

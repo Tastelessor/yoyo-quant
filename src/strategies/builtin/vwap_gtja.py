@@ -97,3 +97,18 @@ def gtja_vwap_signal(
     confidence[early] = 0.0
 
     return pd.DataFrame({"date": df["date"], "code": df["code"], "signal": signal, "confidence": confidence})
+
+
+@register_strategy("reversed_gtja_vwap")
+class ReversedGTJAVWAPStrategy(GTJAVWAPStrategy):
+    """Reversed VWAP: flips buy/sell signals. Strongest single strategy in backtests."""
+
+    @property
+    def name(self) -> str:
+        return "reversed_gtja_vwap"
+
+    def generate_signal(self, data, factors=None):
+        sig = super().generate_signal(data, factors=factors)
+        result = sig.copy()
+        result["signal"] = -result["signal"]
+        return result

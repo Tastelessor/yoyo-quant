@@ -48,8 +48,10 @@
 | strategies (GTJA 趋势) | ✅ 完成 | trend_gtja.py |
 | strategies (反转包装器) | ✅ 完成 | reversed.py: ReversedStrategy |
 | analysis (管道诊断) | ✅ 完成 | pipeline_diagnostics.py + 7 tests |
-| context (regime 检测) | ✅ 完成 | 4-state regime: trend_up/down/range/volatile + 11 tests |
-| context (regime switch) | ✅ 完成 | RegimeSwitchStrategy + 验证 |
+| context (regime 检测) | ✅ 完成 | breadth + 自适应波动率 + EMA + 持续期 + 19 tests |
+| context (regime switch) | ✅ 完成 | RegimeSwitchStrategy + build_regime_switch + 配置 |
+| strategies (reversed VWAP) | ✅ 完成 | reversed_gtja_vwap 注册到策略表 |
+| config (regime_switch) | ✅ 完成 | YAML 配置 + build_regime_switch 构建函数 |
 | context (股票选择) | 🔲 路线图 | 输入行情 → 输出股票池 |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
 | context (参数路由) | 🔲 路线图 | 输入行情 → 输出策略参数 |

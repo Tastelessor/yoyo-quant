@@ -30,24 +30,27 @@ class RegimeSwitchStrategy(Strategy):
         self, data: pd.DataFrame, factors: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         regime_series = detect_regime(data)
+        data = data.sort_values(["code", "date"]).reset_index(drop=True)
 
         all_signals = []
         for date, regime in regime_series.items():
-            day_data = data[data["date"] == date].copy()
-            if day_data.empty:
-                continue
+            # Pass all data up to and including this date (for lookback)
+            hist_data = data[data["date"] <= date].copy()
 
             strategy = self.regimes.get(regime)
             if strategy is None:
                 # No strategy for this regime → hold
+                day_codes = data[data["date"] == date]["code"]
                 sig = pd.DataFrame({
-                    "date": day_data["date"],
-                    "code": day_data["code"],
+                    "date": date,
+                    "code": day_codes.values,
                     "signal": 0,
                     "confidence": 0.0,
                 })
             else:
-                sig = strategy.generate_signal(day_data, factors=factors)
+                full_sig = strategy.generate_signal(hist_data, factors=factors)
+                # Keep only the signal for this date
+                sig = full_sig[full_sig["date"] == date].copy()
 
             all_signals.append(sig)
 

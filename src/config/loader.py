@@ -92,6 +92,43 @@ def build_risk_engine(cfg: dict) -> RuleEngine:
     return RuleEngine(rules)
 
 
+def build_regime_switch(cfg: dict):
+    """Build RegimeSwitchStrategy from config.
+
+    Config format::
+
+        strategies:
+            regime_switch:
+                regimes:
+                    trend_up:
+                        name: momentum_breakout
+                        params: { vol_window: 20 }
+                    trend_down:
+                        name: rsi_reversal
+                        params: { window: 14 }
+                    range:
+                        name: mean_reversion
+                        params: { window: 20 }
+                    volatile:
+                        name: mean_reversion
+                        params: { window: 20 }
+
+    Returns RegimeSwitchStrategy if regime_switch section exists, else None.
+    """
+    rs_cfg = cfg.get("strategies", cfg).get("regime_switch")
+    if rs_cfg is None:
+        return None
+
+    from src.context.regime_switch import RegimeSwitchStrategy
+
+    regimes = {}
+    for regime_label, strat_cfg in rs_cfg["regimes"].items():
+        regimes[regime_label] = get_strategy(
+            strat_cfg["name"], **(strat_cfg.get("params") or {}),
+        )
+    return RegimeSwitchStrategy(regimes=regimes)
+
+
 def build_combined_strategy(cfg: dict) -> dict:
     """Build combined market regime + stock strategy from config.
 
