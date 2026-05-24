@@ -1,15 +1,6 @@
 # yoyo-quant 项目计划
 
-## 架构概览
-
-```
-                ┌→ backtest（模拟评估）
-data → factors → strategies → portfolio → risk ─┤
-                └→ execution（实盘/模拟盘）      ↓
-                                            visualization
-```
-
-模块间通过 DataFrame schema 契约交互，单向数据流，无循环依赖。
+> 架构、数据流、模块契约、开发规范见 [CLAUDE.md](../CLAUDE.md)。
 
 ## 当前状态
 
@@ -21,134 +12,161 @@ data → factors → strategies → portfolio → risk ─┤
 | data storage | ✅ 完成 | storage.py + 5 tests |
 | data filters | ✅ 完成 | 涨跌停/停牌/T+1 过滤 + 11 tests |
 | factors (HV) | ✅ 完成 | volatility.py + 6 tests |
-| strategies (均值回归) | ✅ 完成 | mean_reversion.py + 8 tests |
+| factors (量价) | ✅ 完成 | RSI/OBV/成交量比率/ATR + 24 tests |
+| strategies (均值回归) | ✅ 完成 | builtin/mean_reversion.py + 8 tests |
+| strategies (RSI 反转) | ✅ 完成 | builtin/rsi_reversal.py + 10 tests |
+| strategies (动量突破) | ✅ 完成 | builtin/momentum_breakout.py + 9 tests |
+| strategies (框架) | ✅ 完成 | Strategy ABC + 组合器 + 注册表 + 22 tests |
+| strategies (动量+趋势) | ✅ 完成 | momentum_trend.py + 9 tests |
+| strategies (多因子) | ✅ 完成 | multifactor.py + 10 tests |
+| data (股票池) | ✅ 完成 | universe.py + resolve_universe/apply_data_filters + 14 tests |
+| analysis (参数扫描) | ✅ 完成 | param_sweep.py + plot.py + 18 tests |
+| config (YAML) | ✅ 完成 | loader + build_strategies/build_risk_engine + 12 tests |
 | backtest (rqalpha adapter) | ✅ 完成 | adapter.py + 11 tests |
 | portfolio (equal weight) | ✅ 完成 | allocator.py + 9 tests |
 | risk (position limit) | ✅ 完成 | position_limit.py + 8 tests |
+| risk (规则引擎) | ✅ 完成 | Rule ABC + RuleEngine + 15 tests |
+| risk (止损) | ✅ 完成 | 固定止损 + ATR 动态止损 + 12 tests |
 | backtest (lightweight engine) | ✅ 完成 | engine.py + 14 tests |
 | visualization | ✅ 完成 | charts.py + 6 tests |
+| factors (协整) | ✅ 完成 | cointegration.py + 19 tests |
+| strategies (配对交易) | ✅ 完成 | pair_trading.py + 18 tests |
 | execution | 🔲 未开始 | |
+| factors (GTJA 算子库) | ✅ 完成 | operators.py: delay/delta/rolling_mean/std/sum/sma/corr + 22 tests |
+| factors (GTJA 动量) | ✅ 完成 | momentum.py: 5 因子 (#14/#18/#20/#88/#106) + 26 tests |
+| factors (GTJA 均值回归) | ✅ 完成 | mean_reversion.py: 4 因子 (#63/#79/#112/#128) + 14 tests |
+| factors (GTJA 量价) | ✅ 完成 | volume_price_gtja.py: 3 因子 (#11/#40/#43) + 6 tests |
+| factors (GTJA 波动率) | ✅ 完成 | volatility_gtja.py: 5 因子 (#78/#97/#100/#161/#175) |
+| factors (GTJA VWAP) | ✅ 完成 | vwap.py: 2 因子 (#120/#124) |
+| factors (GTJA 趋势) | ✅ 完成 | trend.py: 3 因子 (#21/#116/#89) |
+| factors (注册表) | ✅ 完成 | registry.py: 名称/别名/tag 过滤 + 9 tests |
+| strategies (GTJA 动量) | ✅ 完成 | gtja_momentum.py + 12 tests |
+| strategies (GTJA 均值回归) | ✅ 完成 | gtja_mean_reversion.py |
+| strategies (GTJA 量价) | ✅ 完成 | volume_price_gtja.py |
+| strategies (GTJA 波动率) | ✅ 完成 | volatility_gtja.py |
+| strategies (GTJA VWAP) | ✅ 完成 | vwap_gtja.py |
+| strategies (GTJA 趋势) | ✅ 完成 | trend_gtja.py |
+| strategies (反转包装器) | ✅ 完成 | reversed.py: ReversedStrategy |
+| analysis (管道诊断) | ✅ 完成 | pipeline_diagnostics.py + 7 tests |
+| context (regime 检测) | ✅ 完成 | 4-state regime: trend_up/down/range/volatile + 11 tests |
+| context (regime switch) | ✅ 完成 | RegimeSwitchStrategy + 验证 |
+| context (股票选择) | 🔲 路线图 | 输入行情 → 输出股票池 |
+| context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
+| context (参数路由) | 🔲 路线图 | 输入行情 → 输出策略参数 |
 
----
+## 目录结构
 
-## Phase 1: 基础建设 ✅ 完成
+```
+src/
+├── analysis/
+│   ├── param_sweep.py      # 参数网格搜索 + 结果排序
+│   ├── plot.py             # 热力图 + 指标柱状图
+│   └── pipeline_diagnostics.py  # 管道诊断工具
+├── config/
+│   ├── __init__.py
+│   └── loader.py          # YAML 加载 + build 函数
+├── context/                ← 新：上下文路由层
+│   ├── regime.py           # 市场状态检测
+│   └── regime_switch.py    # 基于 regime 的策略切换
+├── data/
+│   ├── universe.py         # 股票池解析与过滤
+│   └── ...
+├── factors/
+│   ├── operators.py        # GTJA 基础算子
+│   ├── momentum.py         # GTJA 动量因子
+│   ├── mean_reversion.py   # GTJA 均值回归因子
+│   ├── volume_price_gtja.py # GTJA 量价因子
+│   ├── volatility_gtja.py  # GTJA 波动率因子
+│   ├── vwap.py             # GTJA VWAP 因子
+│   ├── trend.py            # GTJA 趋势因子
+│   └── registry.py         # 因子注册表
+├── risk/
+│   ├── rules.py            # Rule ABC + RuleContext
+│   ├── rule_engine.py      # RuleEngine
+│   ├── rule_registry.py    # 风险规则注册表
+│   ├── position_limit.py
+│   ├── stop_loss.py
+│   └── tradability.py
+├── strategies/
+│   ├── base.py             # Strategy ABC
+│   ├── combiner.py         # WeightedVoteCombiner + FilterCombiner
+│   ├── registry.py         # 策略注册表
+│   ├── reversed.py         # ReversedStrategy 包装器
+│   └── builtin/
+│       ├── mean_reversion.py
+│       ├── rsi_reversal.py
+│       ├── momentum_breakout.py
+│       ├── momentum_trend.py
+│       ├── multifactor.py
+│       ├── gtja_momentum.py
+│       ├── gtja_mean_reversion.py
+│       ├── volume_price_gtja.py
+│       ├── volatility_gtja.py
+│       ├── vwap_gtja.py
+│       └── trend_gtja.py
+├── backtest/
+├── portfolio/
+├── visualization/
+└── execution/
+configs/
+└── default.yaml
+```
 
-### 目标
-建立数据获取→因子计算→策略信号→rqalpha 回测的最小闭环。
+## 历史记录
 
-### Task 1: HV 因子（TDD）✅
-- [x] 写测试：`calc_hv(df, window=20)` 返回 20 日历史波动率
-- [x] 实现 `src/factors/volatility.py`
-- [x] 测试通过（6 tests）
+Phase 1-5 的详细任务、测试数量、回测结果和决策记录见 [history.md](history.md)。
 
-### Task 2: 数据获取器（TDD）✅
-- [x] 写测试：`fetch_daily(code, start, end)` 返回符合 OHLCV schema 的 DataFrame（mock akshare）
-- [x] 实现 `src/data/fetcher.py`，调用 akshare `stock_zh_a_hist`
-- [x] 测试通过（6 tests）
+## 配对交易优化方向
 
-### Task 3: 数据存储（TDD）✅
-- [x] 写测试：`save_parquet(df, path)` / `load_parquet(path)` 读写一致
-- [x] 实现 `src/data/storage.py`
-- [x] 测试通过（5 tests）
+首次回测结论（2026-05-23）：2/5 配对通过协整检验，walk-forward 8 期中仅 1 期盈利，整体不优于之前的 4 个方向策略。
 
-### Task 4: 均值回归策略（TDD）✅
-- [x] 策略规则：价格偏离 20 日均线 ±2σ 入场，回归均线出场
-- [x] 写测试：`mean_reversion信号(df) → signal DataFrame`
-- [x] 实现 `src/strategies/mean_reversion.py`
-- [x] 测试通过（8 tests）
+| # | 方向 | 说明 | 状态 | 结论 |
+|---|------|------|------|------|
+| 1 | 放宽入场阈值 | entry_zscore 从 3.0 降到 1.5-2.0 | ✅ 已试 | 单独无效 |
+| 2 | 缩短 lookback 窗口 | lookback 从 60 降到 20-30 | ✅ 已试 | 单独无效 |
+| 3 | 扩大股票池 | 4 行业 × 8 只 = 32 只 | ✅ 已试 | 协整筛选仍只有 2 对 |
+| 4 | Kalman Filter 动态对冲比率 | 替代滚动 OLS，自适应 hedge ratio | ✅ 已试 | 平均收益更高但波动更大 |
+| 5 | 半衰期配对筛选 | 放宽协整（p<0.10），加 hl<60 天 | ✅ 已试 | **关键突破** |
+| 6 | 行业 ETF 配对 | ETF 流动性好、做空限制少 | ✅ 已试 | 数据不可用 |
+| 7 | 多配对风险平价组合 | 同时持有多组配对，降低单对失效风险 | ✅ 已试 | 反而变差 |
 
-### Task 5: rqalpha 最小集成 ✅
-- [x] 研究 rqalpha 数据格式要求和 mod 注册方式
-- [x] 写 adapter 将我们的 schema 转换为 rqalpha 兼容格式
-- [x] 测试通过（11 tests，mock rqalpha）
+### 方向 5 结论（2026-05-23）
 
-### Task 6: 边界情况处理 ✅
-- [x] 停牌/涨跌停标注 → `data.filters.detect_limit_price()` + `detect_suspension()`
-- [x] 可交易性过滤 → `risk.tradability.filter_tradable()`
-- [x] A 股 T+1 规则 → `risk.tradability.enforce_t1()`
-- [x] 对应测试用例（11 tests，分属 data/ 和 risk/）
+**核心发现**：半衰期是比协整检验更实用的配对筛选指标。
 
----
+- 通过 hl<60 天筛选：1 对（民生/兴业，hl=23 天）
+- Walk-forward 9 期中 **5 期盈利**，最优参数 entry=1.5, exit=0.3, lb=40
+- 对比：协整检验选出的配对 hl=4000+ 天，walk-forward 基本全军覆没
 
-## Phase 2: 框架设计 ✅ 完成
+### 最终优化（2026-05-23）
 
-### 目标
-模块化策略框架成型，数据与可视化解耦。
+通过参数微调找到最优组合：
 
-### Task 1: 完善 data-schemas.md ✅
-- [x] 补全 backtest 输出 schema：权益曲线（equity/cash/position_value/returns）+ 绩效指标（total_return/annual_return/sharpe_ratio/max_drawdown/win_rate/trade_count）
-
-### Task 2: portfolio 模块（TDD）✅
-- [x] `equal_weight(signals, prices, capital)` → 按信号均分仓位，股数取整到 100 手
-- [x] 测试通过（9 tests）
-
-### Task 3: risk 模块 — 仓位集中度（TDD）✅
-- [x] `apply_position_limit(positions, max_weight)` → 单票权重上限，超出部分再分配
-- [x] 测试通过（8 tests）
-
-### Task 4: 轻量回测引擎（TDD）✅
-- [x] `BacktestEngine(capital).run(signals, prices)` → trades + equity_curve + metrics
-- [x] 支持买入/卖出信号执行，跟踪现金+持仓，计算权益曲线和绩效指标
-- [x] 测试通过（14 tests）
-
-### Task 5: visualization 模块（TDD）✅
-- [x] `plot_equity_curve(eq)` — 权益曲线图（含现金和持仓区域）
-- [x] `plot_drawdown(eq)` — 回撤图
-- [x] `plot_backtest_summary(result)` — 组合图（权益+回撤+指标文字）
-- [x] 测试通过（6 tests）
-
----
-
-## Phase 3: 策略开发
-
-### 目标
-具体策略实现和回测验证。
-
-### 首次真实回测结果（2026-05-23）
-
-**配置**：000001/600519/000858，2025-05-06 ~ 2026-05-22，均值回归（20MA ±2σ），等权分配，100万初始资金
-
-**指标**：
-| 指标 | 值 |
+| 参数 | 值 |
 |------|-----|
-| 总收益 | -0.45% |
-| 年化收益 | -0.44% |
-| Sharpe | -1.28 |
-| 最大回撤 | 1.93% |
-| 胜率 | 40.91% |
-| 交易次数 | 44 笔 |
+| entry_zscore | 1.2 |
+| exit_zscore | 0.3 |
+| lookback | 30 |
 
-**发现**：
-- 管道完整跑通，从 fetch 到 chart 无报错
-- 策略信号稀疏（41 买 / 28 卖 / 696 持有），均值回归在趋势性市场触发少
-- 回撤低但资金利用率也低，大量现金闲置
-- 最大单笔亏损来自五粮液（-19,590），最大单笔盈利来自茅台（+7,256）
+Walk-forward 结果：**6/9 期盈利，累计 +7.40%，年化约 +2.3%**
 
-**待改进**：
-- 参数敏感性分析（窗口/std 倍数）
-- 增加股票池覆盖面
-- 考虑加入趋势过滤或自适应参数
+### 最终策略对比
 
-### 待拆分
-- 波动率数据分析应用（IV 均值回归、PCR 情绪指标）
-- 多策略组合
-- 风控体系完善
-- 机器学习辅助因子挖掘（探索性）
+| 策略 | 盈利期 | 平均收益 | 累计收益 |
+|------|--------|----------|----------|
+| Baseline OLS (1.5/0.3/40) | 5/9 | +0.28% | +2.52% |
+| OLS aggressive (1.0/0.3/40) | 6/9 | +0.13% | +1.12% |
+| **Best combo (1.2/0.3/30)** | **6/9** | **+0.82%** | **+7.40%** |
+| Kalman (1.5/0.2/30) | 5/9 | +0.44% | +3.64% |
 
----
+### A/H 股跨市场配对（探索未果）
 
-## 关键决策记录
+- tushare 不支持港股数据
+- akshare/efinance 受代理限制，东方财富接口被阻断
+- yfinance 被限流
+- 需解决数据源问题后才能继续
 
-| 日期 | 决策 | 原因 |
-|------|------|------|
-| 2026-05-23 | 项目计划采用 master plan + TodoWrite 执行 | 避免文件分散，保持整体可见性 |
-| 2026-05-23 | Phase 1 首个因子选择 HV | 最基础的波动率指标，实现简单，验证数据管道 |
-| 2026-05-23 | 数据源使用 tushare | A 股数据覆盖全面，需 token 认证 |
-| 2026-05-23 | 首个策略用简单均值回归 | 价格偏离 20MA ±2σ 入场，回归出场。先验证管道，再迭代策略 |
-| 2026-05-23 | 涨跌停判定用浮点容差 1e-8 | `(11-10)/10` 浮点结果为 0.09999... 非精确 0.1，需容差 |
-| 2026-05-23 | rqalpha adapter 用 mock 测试 | rqalpha 需要 bundle 数据才能跑回测，先用 mock 验证逻辑正确 |
-| 2026-05-23 | portfolio 首个策略用 equal weight | 最简单的分配方式，先验证管道再迭代 |
-| 2026-05-23 | risk 新增 position_limit 而非扩展 tradability | 职责不同：tradability 管可交易性，position_limit 管仓位集中度 |
-| 2026-05-23 | 回测引擎独立于 rqalpha | rqalpha 依赖重、需 bundle 数据，轻量引擎用于快速验证策略逻辑 |
-| 2026-05-23 | visualization 用 matplotlib 不用 plotly | 静态图够用，plotly 交互功能当前阶段不需要 |
-| 2026-05-23 | 首次真实回测验证管道可用 | 3 只股票 1 年数据，均值回归负收益但管道无 bug |
+### 结论
+
+A 股做空限制是配对交易的天花板。+7.40% 累计（年化 ~2.3%）已是合理上限。
+下次研究方向：半衰期选股做单边择时，或多因子组合。
