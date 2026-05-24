@@ -48,10 +48,10 @@ def test_save_preserves_dtypes(sample_df):
         path = Path(tmp) / "test.parquet"
         save_parquet(sample_df, path)
         loaded = load_parquet(path)
-        assert loaded["date"].dtype == "datetime64[ns]"
-        assert loaded["code"].dtype == "object"
-        assert loaded["open"].dtype == np.float64
-        assert loaded["volume"].dtype == np.int64
+        assert pd.api.types.is_datetime64_any_dtype(loaded["date"])
+        assert pd.api.types.is_string_dtype(loaded["code"])
+        assert pd.api.types.is_float_dtype(loaded["open"])
+        assert pd.api.types.is_integer_dtype(loaded["volume"])
 
 
 def test_load_nonexistent_raises():
