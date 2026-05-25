@@ -1,7 +1,11 @@
 import pandas as pd
 import pytest
 
-from src.data.universe import apply_data_filters, resolve_universe
+from src.data.universe import (
+    apply_data_filters,
+    resolve_universe,
+    resolve_universe_groups,
+)
 
 
 # --- resolve_universe: codes ---
@@ -153,3 +157,52 @@ def test_filter_preserves_order(sample_data):
     codes = ["000858", "000001", "600519"]
     result = apply_data_filters(codes, sample_data, cfg.get("filters", {}))
     assert result == ["000001"]
+
+
+# --- resolve_universe_groups ---
+
+
+def test_resolve_groups_basic():
+    """应正确解析命名分组。"""
+    cfg = {
+        "universe_groups": {
+            "银行": {"codes": ["601939", "601398"]},
+            "科技": {"codes": ["688981", "688256"]},
+        }
+    }
+    result = resolve_universe_groups(cfg)
+    assert result == {
+        "银行": ["601939", "601398"],
+        "科技": ["688981", "688256"],
+    }
+
+
+def test_resolve_groups_missing_section():
+    """没有 universe_groups 字段时应返回空 dict。"""
+    cfg = {"universe": {"codes": ["000001"]}}
+    result = resolve_universe_groups(cfg)
+    assert result == {}
+
+
+def test_resolve_groups_empty_config():
+    """空配置应返回空 dict。"""
+    result = resolve_universe_groups({})
+    assert result == {}
+
+
+def test_resolve_groups_empty_groups():
+    """universe_groups 为空时应返回空 dict。"""
+    cfg = {"universe_groups": {}}
+    result = resolve_universe_groups(cfg)
+    assert result == {}
+
+
+def test_resolve_groups_single_group():
+    """只有一个分组时应正确解析。"""
+    cfg = {
+        "universe_groups": {
+            "消费": {"codes": ["600519", "000858", "000568"]},
+        }
+    }
+    result = resolve_universe_groups(cfg)
+    assert result == {"消费": ["600519", "000858", "000568"]}

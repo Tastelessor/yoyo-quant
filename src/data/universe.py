@@ -87,3 +87,20 @@ def apply_data_filters(
         result = [c for c in result if c in avg_turnover and avg_turnover[c] >= min_turnover]
 
     return result
+
+
+def resolve_universe_groups(cfg: dict) -> dict[str, list[str]]:
+    """从 YAML config 解析命名股票池分组。
+
+    Parameters
+    ----------
+    cfg : dict
+        完整配置或包含 ``universe_groups`` 段的字典。
+
+    Returns
+    -------
+    dict[str, list[str]]
+        分组名到代码列表的映射。无 ``universe_groups`` 段时返回空 dict。
+    """
+    groups = cfg.get("universe_groups") or {}
+    return {name: list(g.get("codes", [])) for name, g in groups.items()}
