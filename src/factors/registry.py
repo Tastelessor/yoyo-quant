@@ -69,5 +69,50 @@ def _register_defaults() -> None:
         register_factor(primary_name, func, tags=["momentum", "gtja"])
         register_factor(alias, func, tags=["momentum", "gtja"])
 
+    from src.factors.volume_price_gtja import (
+        calc_candle_body_vol_composite,
+        calc_close_vol_rank_cov_5d,
+        calc_dollar_vol_std_6d,
+        calc_high_vol_rank_corr_3d,
+        calc_money_flow_6d,
+        calc_obv_6d,
+        calc_open_vol_corr_10d,
+        calc_open_vwap_close_vwap,
+        calc_return_1d_times_vol,
+        calc_return_6d_times_vol,
+        calc_shadow_ratio_20d,
+        calc_up_down_vol_ratio_26d,
+        calc_vol_change_pct_5d,
+        calc_vol_macd_9_26_12,
+        calc_vol_rank_intraday_corr_6d,
+        calc_vol_rsi_6d,
+        calc_vwap_vol_rank_corr_5d,
+        calc_williams_r_smoothed_6d,
+    )
+
+    volume_price_factors = [
+        ("calc_money_flow_6d", calc_money_flow_6d, "gtja_11"),
+        ("calc_up_down_vol_ratio_26d", calc_up_down_vol_ratio_26d, "gtja_40"),
+        ("calc_obv_6d", calc_obv_6d, "gtja_43"),
+        ("calc_vol_rank_intraday_corr_6d", calc_vol_rank_intraday_corr_6d, "gtja_1"),
+        ("calc_vol_change_pct_5d", calc_vol_change_pct_5d, "gtja_80"),
+        ("calc_return_6d_times_vol", calc_return_6d_times_vol, "gtja_29"),
+        ("calc_return_1d_times_vol", calc_return_1d_times_vol, "gtja_178"),
+        ("calc_high_vol_rank_corr_3d", calc_high_vol_rank_corr_3d, "gtja_32"),
+        ("calc_close_vol_rank_cov_5d", calc_close_vol_rank_cov_5d, "gtja_99"),
+        ("calc_open_vol_corr_10d", calc_open_vol_corr_10d, "gtja_139"),
+        ("calc_vwap_vol_rank_corr_5d", calc_vwap_vol_rank_corr_5d, "gtja_90"),
+        ("calc_williams_r_smoothed_6d", calc_williams_r_smoothed_6d, "gtja_47"),
+        ("calc_shadow_ratio_20d", calc_shadow_ratio_20d, "gtja_118"),
+        ("calc_candle_body_vol_composite", calc_candle_body_vol_composite, "gtja_54"),
+        ("calc_open_vwap_close_vwap", calc_open_vwap_close_vwap, "gtja_12"),
+        ("calc_dollar_vol_std_6d", calc_dollar_vol_std_6d, "gtja_70"),
+        ("calc_vol_macd_9_26_12", calc_vol_macd_9_26_12, "gtja_145"),
+        ("calc_vol_rsi_6d", calc_vol_rsi_6d, "gtja_102"),
+    ]
+    for primary_name, func, alias in volume_price_factors:
+        register_factor(primary_name, func, tags=["volume_price", "gtja"])
+        register_factor(alias, func, tags=["volume_price", "gtja"])
+
 
 _register_defaults()
