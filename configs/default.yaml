@@ -111,6 +111,33 @@ portfolio:
   capital: 1_000_000
 
 strategies:
+  # gtja_volume_price (18 volume/sentiment factors, 5 active by default):
+  #   name: gtja_volume_price
+  #   params:
+  #     rebalance: 20
+  #     top_n: 5
+  #     bottom_n: 3
+  #     weights:
+  #       # Active (10y-validated):
+  #       money_flow_6d: 1.0              # GTJA #11  — 6d directional pressure
+  #       up_down_vol_26d: 1.0            # GTJA #40  — up/down volume ratio
+  #       obv_6d: 1.0                     # GTJA #43  — OBV-like 6d
+  #       shadow_ratio_20d: 1.0           # GTJA #118 — upper/lower shadow ratio ★
+  #       return_1d_times_vol: 1.0        # GTJA #178 — daily return × volume ★
+  #       # Disabled (weaker than baseline):
+  #       vol_rank_intraday_corr_6d: 0.0  # GTJA #1
+  #       vol_change_pct_5d: 0.0          # GTJA #80
+  #       return_6d_times_vol: 0.0        # GTJA #29
+  #       high_vol_rank_corr_3d: 0.0      # GTJA #32
+  #       close_vol_rank_cov_5d: 0.0      # GTJA #99
+  #       open_vol_corr_10d: 0.0          # GTJA #139
+  #       vwap_vol_rank_corr_5d: 0.0      # GTJA #90
+  #       williams_r_smoothed_6d: 0.0     # GTJA #47
+  #       candle_body_vol_composite: 0.0  # GTJA #54
+  #       open_vwap_close_vwap: 0.0       # GTJA #12
+  #       dollar_vol_std_6d: 0.0          # GTJA #70
+  #       vol_macd_9_26_12: 0.0           # GTJA #145
+  #       vol_rsi_6d: 0.0                 # GTJA #102
   # Regime switch: route to different strategies based on market regime.
   # When regime_switch is set, it takes priority over combiner+rules.
   regime_switch:

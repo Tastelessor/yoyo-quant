@@ -5,15 +5,69 @@ from __future__ import annotations
 import pandas as pd
 
 from src.factors.volume_price_gtja import (
+    calc_candle_body_vol_composite,
+    calc_close_vol_rank_cov_5d,
+    calc_dollar_vol_std_6d,
+    calc_high_vol_rank_corr_3d,
     calc_money_flow_6d,
     calc_obv_6d,
+    calc_open_vol_corr_10d,
+    calc_open_vwap_close_vwap,
+    calc_return_1d_times_vol,
+    calc_return_6d_times_vol,
+    calc_shadow_ratio_20d,
     calc_up_down_vol_ratio_26d,
+    calc_vol_change_pct_5d,
+    calc_vol_macd_9_26_12,
+    calc_vol_rank_intraday_corr_6d,
+    calc_vol_rsi_6d,
+    calc_vwap_vol_rank_corr_5d,
+    calc_williams_r_smoothed_6d,
 )
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
-DEFAULT_WEIGHTS = {"money_flow_6d": 1.0, "up_down_vol_26d": 1.0, "obv_6d": 1.0}
-FACTOR_COLS = list(DEFAULT_WEIGHTS.keys())
+_FACTOR_COMPUTERS = {
+    "money_flow_6d": calc_money_flow_6d,
+    "up_down_vol_26d": calc_up_down_vol_ratio_26d,
+    "obv_6d": calc_obv_6d,
+    "vol_rank_intraday_corr_6d": calc_vol_rank_intraday_corr_6d,
+    "vol_change_pct_5d": calc_vol_change_pct_5d,
+    "return_6d_times_vol": calc_return_6d_times_vol,
+    "return_1d_times_vol": calc_return_1d_times_vol,
+    "high_vol_rank_corr_3d": calc_high_vol_rank_corr_3d,
+    "close_vol_rank_cov_5d": calc_close_vol_rank_cov_5d,
+    "open_vol_corr_10d": calc_open_vol_corr_10d,
+    "vwap_vol_rank_corr_5d": calc_vwap_vol_rank_corr_5d,
+    "williams_r_smoothed_6d": calc_williams_r_smoothed_6d,
+    "shadow_ratio_20d": calc_shadow_ratio_20d,
+    "candle_body_vol_composite": calc_candle_body_vol_composite,
+    "open_vwap_close_vwap": calc_open_vwap_close_vwap,
+    "dollar_vol_std_6d": calc_dollar_vol_std_6d,
+    "vol_macd_9_26_12": calc_vol_macd_9_26_12,
+    "vol_rsi_6d": calc_vol_rsi_6d,
+}
+
+DEFAULT_WEIGHTS = {
+    "money_flow_6d": 1.0,
+    "up_down_vol_26d": 1.0,
+    "obv_6d": 1.0,
+    "shadow_ratio_20d": 1.0,
+    "return_1d_times_vol": 1.0,
+    "vol_rank_intraday_corr_6d": 0.0,
+    "vol_change_pct_5d": 0.0,
+    "return_6d_times_vol": 0.0,
+    "high_vol_rank_corr_3d": 0.0,
+    "close_vol_rank_cov_5d": 0.0,
+    "open_vol_corr_10d": 0.0,
+    "vwap_vol_rank_corr_5d": 0.0,
+    "williams_r_smoothed_6d": 0.0,
+    "candle_body_vol_composite": 0.0,
+    "open_vwap_close_vwap": 0.0,
+    "dollar_vol_std_6d": 0.0,
+    "vol_macd_9_26_12": 0.0,
+    "vol_rsi_6d": 0.0,
+}
 
 
 @register_strategy("gtja_volume_price")
@@ -33,6 +87,11 @@ class GTJAVolumePriceStrategy(Strategy):
         )
 
 
+def _active_factor_cols(weights: dict) -> list[str]:
+    """Return factor columns with non-zero weight."""
+    return [k for k, v in weights.items() if v > 0 and k in _FACTOR_COMPUTERS]
+
+
 def gtja_volume_price_signal(
     df: pd.DataFrame, rebalance: int = 20, top_n: int = 5, bottom_n: int = 3,
     weights: dict | None = None, factors: pd.DataFrame | None = None,
@@ -42,16 +101,14 @@ def gtja_volume_price_signal(
     df = df.sort_values(["code", "date"]).reset_index(drop=True)
     all_dates = sorted(df["date"].unique())
 
-    if factors is not None and all(c in factors.columns for c in FACTOR_COLS):
-        factor_df = factors[["date", "code"] + FACTOR_COLS].copy()
+    active = _active_factor_cols(weights)
+    if factors is not None and all(c in factors.columns for c in active):
+        factor_df = factors[["date", "code"] + active].copy()
     else:
-        mf = calc_money_flow_6d(df)
-        ud = calc_up_down_vol_ratio_26d(df)
-        obv = calc_obv_6d(df)
-        factor_df = pd.DataFrame({
-            "date": df["date"], "code": df["code"],
-            "money_flow_6d": mf.values, "up_down_vol_26d": ud.values, "obv_6d": obv.values,
-        })
+        factor_df = pd.DataFrame({"date": df["date"], "code": df["code"]})
+        for col in active:
+            if col in _FACTOR_COMPUTERS:
+                factor_df[col] = _FACTOR_COMPUTERS[col](df).values
 
     signal = pd.Series(0, index=df.index, dtype=int)
     confidence = pd.Series(0.0, index=df.index)
@@ -62,7 +119,6 @@ def gtja_volume_price_signal(
         day_data = factor_df[factor_df["date"] == rb_date].copy()
         if len(day_data) < 2:
             continue
-        active = [c for c in FACTOR_COLS if c in weights]
         day_data["score"] = 0.0
         total_w = 0.0
         for col in active:
