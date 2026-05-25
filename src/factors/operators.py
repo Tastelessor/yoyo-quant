@@ -193,3 +193,109 @@ def corr(
         )
         results.append(corr_vals)
     return pd.concat(results).sort_index()
+
+
+def rank(df: pd.DataFrame, col: str) -> pd.Series:
+    """Cross-sectional percentile rank within each date.
+
+    Computes rank as percentile (0 to 1) across all stocks on the same
+    date. Unlike other operators, this groups by ``date``, not ``code``.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Must contain 'date' and the column named by `col`.
+    col : str
+        Column name to rank.
+
+    Returns
+    -------
+    Series
+        Percentile ranks [0, 1] per date. No NaN values (rank works
+        with any group size >= 1).
+    """
+    return df.groupby("date")[col].rank(pct=True)
+
+
+def ts_max(df: pd.DataFrame, col: str, window: int) -> pd.Series:
+    """Rolling maximum within each stock group.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Must contain 'code' and the column named by `col`.
+    col : str
+        Column name.
+    window : int
+        Rolling window size.
+
+    Returns
+    -------
+    Series
+        Rolling max. First (window-1) rows per stock are NaN.
+    """
+    return (
+        df.groupby("code")[col]
+        .rolling(window=window, min_periods=window)
+        .max()
+        .droplevel(0)
+        .sort_index()
+    )
+
+
+def ts_min(df: pd.DataFrame, col: str, window: int) -> pd.Series:
+    """Rolling minimum within each stock group.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Must contain 'code' and the column named by `col`.
+    col : str
+        Column name.
+    window : int
+        Rolling window size.
+
+    Returns
+    -------
+    Series
+        Rolling min. First (window-1) rows per stock are NaN.
+    """
+    return (
+        df.groupby("code")[col]
+        .rolling(window=window, min_periods=window)
+        .min()
+        .droplevel(0)
+        .sort_index()
+    )
+
+
+def rolling_cov(
+    df: pd.DataFrame, col_x: str, col_y: str, window: int,
+) -> pd.Series:
+    """Rolling covariance between two columns within each stock group.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Must contain 'code' and both named columns.
+    col_x : str
+        First column name.
+    col_y : str
+        Second column name.
+    window : int
+        Rolling window size.
+
+    Returns
+    -------
+    Series
+        Rolling covariance. First (window-1) rows per stock are NaN.
+    """
+    results = []
+    for _, group in df.groupby("code"):
+        cov_vals = (
+            group[col_x]
+            .rolling(window=window, min_periods=window)
+            .cov(group[col_y])
+        )
+        results.append(cov_vals)
+    return pd.concat(results).sort_index()
