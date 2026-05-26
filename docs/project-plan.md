@@ -51,8 +51,8 @@
 | analysis (管道诊断) | ✅ 完成 | pipeline_diagnostics.py + 7 tests |
 | analysis (行业矩阵) | ✅ 完成 | pool_matrix.py: 策略×行业交叉回测 + 12 tests |
 | config (YAML) | ✅ 完成 | loader + build_strategies/build_risk_engine/build_regime_switch + 12 tests |
-| context (regime 检测) | ✅ 完成 | breadth + 自适应波动率 + EMA + 持续期 + 19 tests |
-| context (regime switch) | ✅ 完成 | RegimeSwitchStrategy + build_regime_switch + YAML 配置 |
+| context (regime 检测) | ✅ 完成 | breadth + 自适应波动率 + EMA + 持续期 + 指数过滤 + 19 tests |
+| context (regime switch) | ✅ 完成 | RegimeSwitchStrategy + confirmation_lag(10) + build_regime_switch |
 | context (股票选择器) | ✅ 完成 | stock_selector.py: 因子质量评估 + 动态股票池筛选 + 40 tests |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
 | context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
@@ -131,20 +131,54 @@ configs/
 
 | # | 组件 | 状态 | 说明 |
 |---|------|------|------|
-| 1 | Regime 检测 | ✅ | breadth + 自适应波动率 + EMA + 持续期，4 种 regime |
-| 2 | Regime Switch | ✅ | 按 regime 切换子策略，价值在极端行情避险 |
+| 1 | Regime 检测 | ✅ | breadth + 自适应波动率 + EMA + 持续期 + 指数过滤，4 种 regime |
+| 2 | Regime Switch | ✅ | confirmation_lag=10 + 按 regime 切换子策略 |
 | 3 | 股票选择器 | ✅ | factor_coverage + rank_stability + factor_dispersion → 日频动态选股 |
-| 4 | 参数路由 | ✅ | param_router.py: regime → {rebalance, top_n, bottom_n}；已验证 per-regime 因子权重切换增量极小 |
-| 5 | 因子选择 | 🔲 | 输入行情 → 输出因子组合（不同行情用不同因子子集） |
+| 4 | 参数路由 | ✅ | route_params(regime) → {rebalance, top_n, bottom_n} |
+| 5 | 因子选择 | ✅ | 实证结论：per-regime 因子权重切换增量极小，regime 价值在避险不在择因子 |
 
-### 股票选择器设计
+### Context 层实证总结（2026-05-26）
 
-两阶段架构：
+| 验证项 | 结论 | 证据 |
+|--------|------|------|
+| 因子审计 × regime | 因子稳定性排名跨 regime 高度一致，per-regime 切换无增量 | spread < 0.15 for most factors |
+| 参数路由 | 存量参数差异化不足以产生正向信号 | ΔSharpe=-0.077 vs fixed |
+| 因子选择 | 不同 regime 下最优因子类别差异小，volatility 在 trend_up 略有优势 | 6×4 regime×category 矩阵 |
+| Regime 避险 | 空仓坏行情 + lag=10 → MaxDD -3.5%, Sharpe +0.10 | 首次全方位优于全 regime 交易 |
+| 确认期 | lag=10 是 sweet spot，lag=7 太短 | 46→32 flips |
 
-1. **因子审计**（季度级）：`evaluate_factors` 评估所有因子的 coverage/stability/dispersion，标记 active/inactive
-2. **股票选择**（日频）：`select_tradable` 用 active 因子给每只股票打分，选通过最多因子质量检查的股票
+**核心发现**：Context 层的优化空间已经不大。regime detection 的精度瓶颈在信号层，不在路由层。更大的 alpha 增量在多类别因子组合（信号层）和行业感知分配（组合层）。
 
-三个评估维度（策略无关，不预测收益）：
+## 下一阶段路线图
+
+### 现状诊断
+
+当前 full-period 回测天花板：Sharpe 0.56, 年化 12.6%, MaxDD 22.5%（mean_reversion 单类别）。
+加 regime 避险后：Sharpe 0.66, 年化 10.8%, MaxDD 19.1%。Calmar 0.57——不算好。
+
+瓶颈不在 context 层，在**信号层**。因子质量决定了信息比率上限，context 只能在这个上限内做风险预算。
+
+| 限速因素 | 证据 |
+|---------|------|
+| A 股大市值 alpha 天花板 | 10y 行业矩阵最好 Sharpe 0.61 |
+| 单因子类别极限 | mean_reversion 最好 0.56，其余 < 0.52 |
+| 长多限制 | 24% 天数（trend_down+volatile）无法获利，只能空仓 |
+| 股票池有效性 | CSI 300 大市值定价效率高，alpha 天然受限 |
+
+### 可行路径（优先级排序）
+
+| # | 方向 | 层级 | 预期增量 | 说明 |
+|---|------|------|---------|------|
+| A | **多类别因子组合** | 信号层 | 大 | 6 个类别加权组合（momentum+mean_rev+vol_price+volatility+vwap+trend），而非只用 mean_reversion。多个低相关 alpha 源叠加可把 Sharpe 从 0.56 推到 0.7+ |
+| B | **行业感知分配** | 组合层 | 中 | 不同行业最优策略不同（科技 momentum Sharpe 0.61 vs 消费 VWAP 0.49）。行业×策略路由的分化 > regime×策略路由 |
+| C | **扩大股票池到中盘** | 数据层 | 中 | 加入 CSI 500 中盘股。小市值定价效率低 → alpha 空间更大。需要解决流动性和数据覆盖问题 |
+| D | Execution 模块 | 基础层 | — | 统一下单接口。不做能赚钱，但管道不完整 |
+
+### 执行建议
+
+**先 A → 验证 → 再 B**
+
+A 是最大的增量来源，且改动最小（用一个 MultiCategoryStrategy 包装 6 个类别，weighted vote 输出信号）。验证后如果 Sharpe 过 0.7，再做 B 进一步优化分配。
 - **Coverage**：因子值是否可计算？
 - **Rank Stability**：排名是否跨期稳定（rank autocorrelation）？
 - **Dispersion**：因子是否区分股票（cross-sectional CV）？

@@ -113,6 +113,7 @@ def detect_regime(
     trend_weak_thresh: float = 0.15,
     ema_span: int = 5,
     min_persistence: int = 7,
+    index_data: pd.DataFrame | None = None,
 ) -> pd.Series:
     """Detect market regime per date.
 
@@ -138,6 +139,11 @@ def detect_regime(
     min_persistence : int
         Minimum days a regime must persist before switching.
         1 = no enforcement.
+    index_data : DataFrame or None
+        Optional CSI 300 (or any broad index) data with 'date' and 'close'
+        columns. When provided, MA(50)/MA(200) crossover acts as a secondary
+        confirmation: if breadth says trend but index disagrees, the regime
+        is downgraded to "range" to avoid false directional signals.
 
     Returns
     -------
@@ -236,8 +242,56 @@ def detect_regime(
     regime[~is_high_vol & ~is_low_vol & is_moderate & is_down] = "trend_down"
     # Low vol → range (already default)
 
+    # --- Index-level confirmation (optional, before persistence) ---
+    if index_data is not None:
+        regime = _apply_index_filter(regime, index_data)
+
     # --- Enforce minimum persistence ---
     if min_persistence > 1:
         regime = _enforce_persistence(regime, min_days=min_persistence)
 
     return regime
+
+
+def _apply_index_filter(
+    regime: pd.Series,
+    index_data: pd.DataFrame,
+    ma_short: int = 50,
+    ma_long: int = 200,
+) -> pd.Series:
+    """Filter regime using broad index MA crossover as secondary confirmation.
+
+    When the index trend contradicts the breadth-based regime:
+    - breadth trend_up + index bearish → downgrade to "range"
+    - breadth trend_down + index bullish → downgrade to "range"
+
+    This prevents false directional signals when micro (breadth) and macro
+    (index) disagree.
+    """
+    if "close" not in index_data.columns or "date" not in index_data.columns:
+        raise ValueError("index_data must contain 'date' and 'close' columns")
+
+    idx = index_data.sort_values("date").copy()
+    close = idx.set_index("date")["close"]
+    ma_s = close.rolling(window=ma_short, min_periods=ma_short).mean()
+    ma_l = close.rolling(window=ma_long, min_periods=ma_long).mean()
+
+    # Index regime: close > MA50 AND MA50 > MA200 → bullish
+    #               close < MA50 AND MA50 < MA200 → bearish
+    #               anything else → neutral
+    bullish = (close > ma_s) & (ma_s > ma_l)
+    bearish = (close < ma_s) & (ma_s < ma_l)
+
+    # Map to common dates
+    common_dates = regime.index.intersection(bullish.index)
+    regime_filtered = regime.copy()
+
+    for d in common_dates:
+        r = regime_filtered[d]
+        # If breadth says trend but index disagrees → downgrade
+        if r == "trend_up" and d in bearish.index and bearish[d]:
+            regime_filtered[d] = "range"
+        elif r == "trend_down" and d in bullish.index and bullish[d]:
+            regime_filtered[d] = "range"
+
+    return regime_filtered
