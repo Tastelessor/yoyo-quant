@@ -103,18 +103,27 @@ def build_regime_switch(cfg: dict):
                     trend_up:
                         name: momentum_breakout
                         params: { vol_window: 20 }
+                        factor_weights: data/audit/trend_up_weights.parquet
                     trend_down:
                         name: rsi_reversal
                         params: { window: 14 }
                     range:
                         name: mean_reversion
                         params: { window: 20 }
+                        factor_weights: { money_flow_6d: 0.6, obv_6d: 0.4 }
                     volatile:
-                        name: mean_reversion
-                        params: { window: 20 }
+                        name: gtja_volume_price
+                        params: { rebalance: 20, top_n: 5, bottom_n: 3 }
+                        factor_weights: data/audit/volatile_weights.parquet
+
+    ``factor_weights`` is optional. It can be:
+    - A file path (str): parquet with columns [name, weight]
+    - An inline dict: {factor_name: weight, ...}
 
     Returns RegimeSwitchStrategy if regime_switch section exists, else None.
     """
+    import pandas as pd
+
     rs_cfg = cfg.get("strategies", cfg).get("regime_switch")
     if rs_cfg is None:
         return None
@@ -123,9 +132,27 @@ def build_regime_switch(cfg: dict):
 
     regimes = {}
     for regime_label, strat_cfg in rs_cfg["regimes"].items():
-        regimes[regime_label] = get_strategy(
-            strat_cfg["name"], **(strat_cfg.get("params") or {}),
-        )
+        params = dict(strat_cfg.get("params") or {})
+        fw = strat_cfg.get("factor_weights")
+
+        if fw is not None:
+            if isinstance(fw, str):
+                fw_path = Path(fw)
+                if not fw_path.exists():
+                    raise FileNotFoundError(
+                        f"Factor weights file not found: {fw_path.resolve()}"
+                    )
+                weights_df = pd.read_parquet(fw)
+                if not {"name", "weight"}.issubset(weights_df.columns):
+                    raise ValueError(
+                        f"Factor weights parquet must have 'name' and 'weight' "
+                        f"columns, got: {list(weights_df.columns)}"
+                    )
+                params["weights"] = dict(zip(weights_df["name"], weights_df["weight"]))
+            elif isinstance(fw, dict):
+                params["weights"] = fw
+
+        regimes[regime_label] = get_strategy(strat_cfg["name"], **params)
     return RegimeSwitchStrategy(regimes=regimes)
 
 

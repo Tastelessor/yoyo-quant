@@ -1,54 +1,140 @@
 # yoyo-quant
 
-A 股量化策略研究框架——从数据到回测的完整管道，专注系统性策略验证而非"看指标猜涨跌"。
+A 股量化策略研究框架 —— 从数据到回测的完整管道，专注系统性策略验证而非"看指标猜涨跌"。
 
 ## 当前能力
 
 - **100 只 CSI 300 大市值股票**，覆盖 11 个行业板块
-- **GTJA 191 因子库**：22+ 因子（动量/均值回归/量价/波动率/VWAP/趋势），7 个可复用算子
-- **11 个策略**：6 个 GTJA 因子策略 + 均值回归/RSI 反转/动量突破/动量趋势/多因子
-- **策略包装器**：ReversedStrategy（反向信号）、RegimeSwitchStrategy（市场状态自适应切换）
+- **46 个因子**（动量/均值回归/量价/波动率/VWAP/趋势），11 个可复用算子，因子注册表支持名称/别名/tag 过滤
+- **13 个策略**：6 个 GTJA 因子策略 + 均值回归/RSI 反转/动量突破/动量趋势/多因子/配对交易/市场状态
+- **策略包装器**：ReversedStrategy（反向信号）、RegimeSwitchStrategy（市场状态自适应路由）
+- **Context 路由层**：regime 检测 → 策略切换 → 参数路由（rebalance/top_n per regime），股票选择器（因子质量评估 → 动态股票池）
 - **完整回测管道**：data → factors → strategies → portfolio → risk → backtest → visualization
 - **风控引擎**：可组合规则引擎（止损/仓位限制/T+1/涨跌停过滤）
-- **分析工具**：参数网格扫描、管道诊断、策略×行业矩阵交叉回测
-- **447+ 测试**：单元测试 + 管道测试 + 集成测试
+- **分析工具**：参数网格扫描、管道诊断、策略×行业矩阵、因子审计（全局 + per-regime）
+- **577 个测试**：单元测试 + 管道测试 + 集成测试
 
-## 一年多的经验教训
+## 数据流
 
-经过大量回测验证后的一些发现：
-
-- **A 股大市值股票年化收益天花板约 12-15%**，10 年期 Sharpe 天花板约 0.6。如果有人告诉你 A 股量化能做到年化 30%+ Sharpe 2.0，跑。
-- **3 年回测结果不可信**。2023-2026 科技牛市让几乎所有策略看起来都不错。必须用 ≥10 年窗口验证。在我们的行业矩阵里，只有 3/11 个行业在 3y 和 10y 窗口下最优策略一致。
-- **gtja_momentum 是唯一跨周期稳定的策略**，3y 和 10y 都排第一，但 10y Sharpe 也只有 0.34。
-- **reversed_gtja_vwap 是 3y 窗口的冠军**（Sharpe 1.11），但在 10y 窗口崩塌到倒数第一。典型过拟合案例。
-- **单因子类别不足以产生稳定 alpha**，所有 GTJA 策略 Sharpe < 0.5。信号质量才是根本问题，不是风控或组合优化。
-- **RegimeSwitch 的价值在极端行情避险**，日常平替 baseline，但在市场暴跌时能少亏 24%。
-- **半衰期比协整检验更实用**作为配对筛选指标——协整通过的对 hl=4000+ 天基本没法交易。
-- **消费行业值得关注**——3y 窗口下死气沉沉，10y 窗口下 Sharpe 0.49（排第二）。均值回归需要长周期才能体现。
-
-## 架构
+回测管道（7 步，单向）：
 
 ```
-              ┌→ backtest（模拟评估）
-data → factors → strategies → portfolio → risk ─┤
-              └→ execution（实盘/模拟盘）      ↓
-                                          visualization
+configs/default.yaml
+  │ load_config()
+  ▼
+[1] src/config/loader.py
+    build_strategies() / build_risk_engine() / build_regime_switch()
+    └── 产出：策略实例 + 风控引擎实例
+  │
+  ▼
+[2] src/data/
+    fetcher.py         fetch_daily(code, start, end)    ──┐
+    storage.py         load_parquet() / save_parquet()   ──┤ 行情获取与缓存
+    filters.py         detect_limit_price()              ──┤ 涨跌停/停牌标注
+                        detect_suspension()              ──┤
+    universe.py        resolve_universe()                ──┘ 股票池解析
+    └── 产出：OHLCV DataFrame（含 limit_up/limit_down/is_suspended 列）
+  │
+  ▼
+[3] src/factors/
+    operators.py       11 个算子 (delay/rank/corr/sma/ts_max/...)
+    registry.py        因子注册表 (46 因子, 名称/别名/tag 过滤)
+    momentum.py        5   (#14 #18 #20 #88 #106)
+    mean_reversion.py  4   (#63 #79 #112 #128)
+    volume_price_gtja  18  (#1 #11 #12 #29 #32 #40 #43 #47 #54 #70
+    .py                     #80 #90 #99 #102 #118 #139 #145 #178)
+    volatility_gtja.py 5   (#78 #97 #100 #161 #175)
+    vwap.py            2   (#120 #124)
+    trend.py           3   (#21 #89 #116)
+    volatility.py      1   (HV)
+    volume_price.py    4   (RSI OBV ATR volume_ratio)
+    cointegration.py   4   (spread zscore half_life kalman)
+    └── 产出：因子 DataFrame（date + code + 因子列）
+  │
+  ▼
+[4] src/context/ + src/strategies/ + src/portfolio/
+    ┌─ context 层（市场感知，先于策略执行）─────────────────────┐
+    │ regime.py          detect_regime() → trend_up/down/range/volatile   │
+    │ regime_switch.py   RegimeSwitchStrategy → 按 regime 选择子策略       │
+    │ param_router.py    route_params(regime) → {rebalance, top_n, ...}   │
+    │ stock_selector.py  select_tradable() → 按因子质量筛选股票池           │
+    └────────────────────────────────────────────────────────────────────┘
+    ┌─ strategies 层（信号生成）─────────────────────────────────┐
+    │ base.py            Strategy ABC                                     │
+    │ registry.py        register_strategy / get_strategy (13 策略)       │
+    │ combiner.py        WeightedVoteCombiner / FilterCombiner             │
+    │ reversed.py        ReversedStrategy（信号翻转包装器）                │
+    │ builtin/           13 个策略实现                                    │
+    └────────────────────────────────────────────────────────────────────┘
+    ┌─ portfolio 层（仓位分配）──────────────────────────────────┐
+    │ allocator.py       equal_weight(signals, prices, capital)          │
+    └────────────────────────────────────────────────────────────────────┘
+    └── 产出：信号 DataFrame (date/code/signal/confidence) + 仓位 DataFrame
+  │
+  ▼
+[5] src/risk/
+    rules.py            Rule ABC + RuleContext（规则数据总线）
+    rule_engine.py      RuleEngine（按 priority 排序的链式执行引擎）
+    rule_registry.py    风险规则名称 → 类映射
+    stop_loss.py        FixedStopLossRule(120) / ATRStopLossRule(121)
+    position_limit.py   PositionLimitRule(150)
+    tradability.py      TradabilityRule(200) / T1Rule(210)
+    └── 产出：过滤后的信号 + 风控约束后的仓位
+  │
+  ▼
+[6] src/backtest/                        [7] src/visualization/
+    engine.py                             charts.py
+    BacktestEngine(capital).run()         plot_equity_curve()
+    └── 产出：trades + equity_curve       plot_drawdown()
+         + performance metrics            plot_backtest_summary()
 ```
 
-单向数据流，无循环依赖。每层有明确的 DataFrame schema 契约。
+### Context 层决策流
 
-| 模块 | 职责 |
-|------|------|
-| `data` | 行情获取、清洗、存储、股票池管理 |
-| `factors` | 衍生指标计算（GTJA 191 因子 + 基础量价因子） |
-| `strategies` | 交易信号生成（Strategy ABC + 注册表 + 组合器 + 包装器） |
-| `context` | 市场状态感知（regime 检测、策略路由） |
-| `portfolio` | 仓位分配与再平衡 |
-| `risk` | 风控规则引擎（Rule ABC + 链式执行 + 注册表） |
-| `backtest` | 轻量回测引擎 + rqalpha adapter |
-| `analysis` | 参数扫描、管道诊断、策略×行业矩阵 |
-| `visualization` | 权益曲线、回撤图、绩效面板 |
-| `config` | YAML 配置系统（策略构建 + 风控构建） |
+```
+行情数据
+  │
+  ├──▶ detect_regime()          ──▶ "trend_up" / "trend_down" / "range" / "volatile"
+  │       │
+  │       ├──▶ route_params(regime)     ──▶ {rebalance, top_n, bottom_n}
+  │       │                                     │
+  │       └──▶ RegimeSwitchStrategy            │
+  │              ├─ trend_up  → gtja_momentum  │
+  │              ├─ trend_down → reversed_vwap │
+  │              ├─ range      → reversed_vwap │
+  │              └─ volatile   → gtja_vol      │
+  │                                             │
+  │       strategy.generate_signal(data, **params)  ◀── 参数注入
+  │
+  └──▶ evaluate_factors()       ──▶ 季度级：因子 stability/coverage/dispersion 审计
+        evaluate_factors_by_regime()  按 regime 分组的审计（诊断用，不接入主管道）
+        select_tradable()      ──▶ 日频级：因子质量达标 → 动态股票池
+```
+
+## 经验教训
+
+经过大量回测验证后的发现：
+
+- **A 股大市值股票年化收益天花板约 12-15%**，10 年期 Sharpe 天花板约 0.6
+- **3 年回测不可信**。2023-2026 科技牛市虚高所有 Sharpe 50-70%。必须 ≥10 年验证。仅 3/11 行业在 3y 和 10y 下最优策略一致
+- **gtja_momentum 是唯一跨周期稳定的策略**，3y 和 10y 都排第一，10y Sharpe 0.34
+- **reversed_gtja_vwap 是 3y 过拟合典型**：Sharpe 1.11 → 10y 崩塌到 0.30
+- **A 股有效信号是资金流，不是统计相关**：#118 上下影线比（日内多空战斗）和 #178 日收益×量（价格量能背书）单独跑赢 3 因子基线
+- **5 因子组合是 sweet spot**：太少缺分散，太多稀释信号（18f < 5f）
+- **因子稳定性排名跨 regime 高度一致**：VWAP 和 ATR 系列在任何行情下都是 top performer，rank correlation 类因子在任何行情下都是噪声
+- **RegimeSwitch 的价值在极端行情避险**，日常平替 baseline，但暴跌时能少亏 24%
+- **per-regime 因子权重切换增量极小**，参数路由（rebalance/top_n per regime）更有意义
+
+## 当前路线图
+
+| # | 组件 | 状态 | 文件 |
+|---|------|------|------|
+| 1 | Regime 检测 | ✅ | [regime.py](src/context/regime.py) |
+| 2 | Regime Switch | ✅ | [regime_switch.py](src/context/regime_switch.py) |
+| 3 | 股票选择器 | ✅ | [stock_selector.py](src/context/stock_selector.py) |
+| 4 | 参数路由 | ✅ | [param_router.py](src/context/param_router.py) |
+| 5 | 因子选择 | 🔲 | context layer — regime-aware factor subset |
+| 6 | Execution 模块 | 🔲 | 统一下单接口（模拟/实盘） |
 
 ## 快速开始
 
@@ -57,39 +143,37 @@ git clone <this-repo>
 cd yoyo-quant
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest  # 447+ tests should pass
+pytest  # 577 tests
 ```
 
-需要在 `.env` 中配置 `TUSHARE_TOKEN` 才能拉取真实行情数据。单元测试不依赖外部 API。
+需要在 `.env` 中配置 `TUSHARE_TOKEN`。单元测试不依赖外部 API。
 
-## 项目结构
+## 目录
 
 ```
 yoyo-quant/
 ├── src/
-│   ├── analysis/         # 参数扫描、管道诊断、矩阵分析
-│   ├── backtest/          # 轻量回测引擎 + rqalpha adapter
-│   ├── config/            # YAML 配置加载与构建
-│   ├── context/           # 市场状态检测与策略路由
-│   ├── data/              # 行情获取、存储、股票池
-│   ├── execution/         # 下单接口（规划中）
-│   ├── factors/           # GTJA 191 因子 + 基础量价因子 + 注册表
-│   ├── portfolio/         # 仓位分配
-│   ├── risk/              # 风控规则引擎 + 止损 + 可交易性
-│   ├── strategies/        # 策略框架 + 内置策略 + 注册表 + 组合器
-│   └── visualization/     # 图表与报告
-├── tests/                 # 单元测试（镜像 src 结构）
-├── tests_pipeline/        # 管道测试（模块间串联）
-├── tests_integration/     # 集成测试（需真实 API）
-├── notebooks/             # 探索分析
-├── configs/               # YAML 配置文件
-├── docs/                  # 技术文档（project-plan.md、history.md、data-schemas.md）
-├── CLAUDE.md              # 开发规范（给 AI 协作看）
-└── README.md
+│   ├── analysis/         # param_sweep + pipeline_diagnostics + pool_matrix
+│   ├── backtest/         # engine + rqalpha adapter + walk_forward
+│   ├── config/           # YAML loader + build functions
+│   ├── context/          # regime + regime_switch + stock_selector + param_router
+│   ├── data/             # fetcher + storage + filters + universe
+│   ├── factors/          # operators(11) + 6 GTJA categories(46 factors) + registry + cointegration
+│   ├── portfolio/        # equal_weight allocator
+│   ├── risk/             # rules + rule_engine + rule_registry + stop_loss + tradability
+│   ├── strategies/       # base + combiner + registry + reversed + builtin/(13 strategies)
+│   └── visualization/    # charts
+├── tests/                # 577 tests (mirrors src/ structure)
+├── tests_pipeline/       # cross-module pipeline tests
+├── tests_integration/    # real API (skips without token)
+├── notebooks/            # exploration + factor audit
+├── configs/              # YAML configuration
+├── docs/                 # project-plan.md + history.md + data-schemas.md
+└── CLAUDE.md             # development conventions
 ```
 
 ## 开发规范
 
 铁律：模块解耦、绝对 TDD、技术栈先行、禁止在生产代码使用 mock。
 
-详细规范见 [CLAUDE.md](CLAUDE.md)。项目状态和历史见 [docs/](docs/)。
+详细规范见 [CLAUDE.md](CLAUDE.md)。项目状态见 [docs/project-plan.md](docs/project-plan.md)，历史记录见 [docs/history.md](docs/history.md)。

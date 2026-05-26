@@ -55,7 +55,7 @@
 | context (regime switch) | ✅ 完成 | RegimeSwitchStrategy + build_regime_switch + YAML 配置 |
 | context (股票选择器) | ✅ 完成 | stock_selector.py: 因子质量评估 + 动态股票池筛选 + 40 tests |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
-| context (参数路由) | 🔲 路线图 | 输入行情 → 输出策略参数 |
+| context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
 | execution | 🔲 未开始 | 统一下单接口 |
 
 **测试总计**：551 tests（40 个测试文件）
@@ -134,8 +134,8 @@ configs/
 | 1 | Regime 检测 | ✅ | breadth + 自适应波动率 + EMA + 持续期，4 种 regime |
 | 2 | Regime Switch | ✅ | 按 regime 切换子策略，价值在极端行情避险 |
 | 3 | 股票选择器 | ✅ | factor_coverage + rank_stability + factor_dispersion → 日频动态选股 |
-| 4 | 因子选择 | 🔲 | 输入行情 → 输出因子组合（不同行情用不同因子子集） |
-| 5 | 参数路由 | 🔲 | 输入行情 → 输出策略参数（rebalance/top_n/thresholds 自适应） |
+| 4 | 参数路由 | ✅ | param_router.py: regime → {rebalance, top_n, bottom_n}；已验证 per-regime 因子权重切换增量极小 |
+| 5 | 因子选择 | 🔲 | 输入行情 → 输出因子组合（不同行情用不同因子子集） |
 
 ### 股票选择器设计
 

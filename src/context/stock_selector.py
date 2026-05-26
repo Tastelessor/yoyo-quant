@@ -138,6 +138,7 @@ def evaluate_factors(
     min_coverage: float = 0.8,
     min_stability: float = 0.3,
     min_dispersion: float = 0.10,
+    date_filter: pd.DatetimeIndex | pd.Index | None = None,
 ) -> pd.DataFrame:
     """Audit factor quality across all stocks and dates.
 
@@ -161,6 +162,10 @@ def evaluate_factors(
         Minimum rank autocorrelation. Default 0.3.
     min_dispersion : float
         Minimum cross-sectional CV. Default 0.10.
+    date_filter : DatetimeIndex or None
+        Optional set of dates to restrict the audit to. When provided,
+        only rows with ``date`` in *date_filter* are included.
+        Use with ``evaluate_factors_by_regime`` to split audit by regime.
 
     Returns
     -------
@@ -172,6 +177,13 @@ def evaluate_factors(
         return pd.DataFrame(
             columns=["factor", "coverage", "stability", "dispersion", "active"],
         )
+
+    if date_filter is not None:
+        factor_df = factor_df[factor_df["date"].isin(date_filter)]
+        if factor_df.empty:
+            return pd.DataFrame(
+                columns=["factor", "coverage", "stability", "dispersion", "active"],
+            )
 
     rows = []
     for fcol in factor_names:
@@ -198,6 +210,51 @@ def evaluate_factors(
         })
 
     return pd.DataFrame(rows)
+
+
+def evaluate_factors_by_regime(
+    factor_df: pd.DataFrame,
+    factor_names: list[str],
+    regime_series: pd.Series,
+    lookback: int = 60,
+    lag: int = 5,
+    min_coverage: float = 0.8,
+    min_stability: float = 0.3,
+    min_dispersion: float = 0.10,
+) -> dict[str, pd.DataFrame]:
+    """Run factor audit separately for each regime.
+
+    Parameters
+    ----------
+    factor_df : DataFrame
+        Must contain date, code, and all columns in *factor_names*.
+    factor_names : list[str]
+        Factor columns to evaluate.
+    regime_series : Series
+        Index: dates. Values: regime labels. Output of ``detect_regime``.
+    lookback, lag, min_coverage, min_stability, min_dispersion :
+        Passed through to ``evaluate_factors``.
+
+    Returns
+    -------
+    dict
+        Mapping from regime label to audit DataFrame.
+        Keys are all unique regime labels found in *regime_series*.
+    """
+    result = {}
+    for regime_label in sorted(regime_series.unique()):
+        regime_dates = regime_series[regime_series == regime_label]
+        result[regime_label] = evaluate_factors(
+            factor_df,
+            factor_names,
+            lookback=lookback,
+            lag=lag,
+            min_coverage=min_coverage,
+            min_stability=min_stability,
+            min_dispersion=min_dispersion,
+            date_filter=regime_dates.index,
+        )
+    return result
 
 
 def select_tradable(

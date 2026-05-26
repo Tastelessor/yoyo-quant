@@ -141,7 +141,7 @@ print("=" * 70)
 print("Factor Audit + Weight Update + Backtest")
 print("=" * 70)
 
-print(f"\n[1/4] Loading {len(SUBSET)} stocks ({START} ~ {END})...", end=" ", flush=True)
+print(f"\n[1/5] Loading {len(SUBSET)} stocks ({START} ~ {END})...", end=" ", flush=True)
 t0 = time.time()
 frames = []
 for code in SUBSET:
@@ -163,7 +163,7 @@ prices = data[["date", "code", "close"]]
 print(f"{data['code'].nunique()} stocks, {data['date'].nunique()} days ({time.time() - t0:.1f}s)")
 
 # ── Compute factors ─────────────────────────────────────────────────────
-print(f"\n[2/4] Computing factors...", flush=True)
+print(f"\n[2/5] Computing factors + detecting regime...", flush=True)
 t0 = time.time()
 all_factors = collect_all_factors()
 fdf = pd.DataFrame({"date": data["date"], "code": data["code"]})
@@ -180,8 +180,19 @@ print(f"  {ok} ok, {fail} failed ({time.time() - t0:.1f}s)")
 factor_cols = [c for c in fdf.columns if c.startswith("f_")]
 name_map = {f"f_{k}": k for k in all_factors}
 
+# ── Detect regime ───────────────────────────────────────────────────────────
+from src.context.regime import detect_regime
+
+print("  Detecting market regime...", end=" ", flush=True)
+t0 = time.time()
+regime_series = detect_regime(data)
+regime_counts = regime_series.value_counts().to_dict()
+print(f"{len(regime_counts)} regimes found ({time.time() - t0:.1f}s)")
+for lbl, cnt in sorted(regime_counts.items()):
+    print(f"    {lbl}: {cnt} days ({cnt / len(regime_series) * 100:.0f}%)")
+
 # ── Run audit ────────────────────────────────────────────────────────────
-print(f"\n[3/4] Auditing {len(factor_cols)} factors (LB=60, stability≥0.3)...", flush=True)
+print(f"\n[3/5] Global audit: {len(factor_cols)} factors (LB=60, stability≥0.3)...", flush=True)
 
 AUDIT_PARAMS = {
     "lookback": 60,
@@ -269,12 +280,7 @@ for cat in sorted(audit["category"].unique()):
     sub = audit[audit["category"] == cat]
     print(f"{cat:<18} {len(sub):>7} {int(sub['active'].sum()):>9} {sub['stability'].mean():>10.3f}")
 
-# ── Build strategy weights for gtja_volume_price ────────────────────────
-print(f"\n{'─' * 70}")
-print("[4/4] Backtest with audit-based weights")
-print(f"{'─' * 70}")
-
-# Strategy short name → audit name mapping
+# Strategy short name → audit name mapping (used by both per-regime and backtest)
 WEIGHT_MAP = {
     "money_flow_6d": "money_flow_6d",
     "up_down_vol_26d": "up_down_vol_26d",
@@ -295,6 +301,115 @@ WEIGHT_MAP = {
     "vol_macd_9_26_12": "vol_macd_9_26_12",
     "vol_rsi_6d": "vol_rsi_6d",
 }
+
+# ── Per-regime audit ──────────────────────────────────────────────────────
+print(f"\n{'─' * 70}")
+print(f"[4/5] Per-regime audit ({len(factor_cols)} factors × {len(regime_counts)} regimes)")
+print(f"{'─' * 70}")
+
+from src.context.stock_selector import evaluate_factors_by_regime
+
+REGIME_AUDIT_DIR = AUDIT_DIR / "by_regime"
+REGIME_AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+
+per_regime = evaluate_factors_by_regime(
+    fdf, factor_cols, regime_series, **AUDIT_PARAMS,
+)
+
+regime_weights = {}  # {regime_label: {short_name: weight}}
+for regime_label, audit_df in sorted(per_regime.items()):
+    if audit_df.empty:
+        regime_weights[regime_label] = {}
+        continue
+
+    audit_df = audit_df.copy()
+    audit_df["name"] = audit_df["factor"].map(name_map)
+    audit_df["category"] = audit_df["name"].map(lambda n: all_factors.get(n, (None, "other"))[1])
+
+    # Stability-based weight
+    audit_df["weight"] = 0.0
+    pos = audit_df["stability"].clip(lower=0.0)
+    total = pos.sum()
+    if total > 0:
+        audit_df["weight"] = pos / total
+
+    audit_df = audit_df.sort_values("stability", ascending=False).reset_index(drop=True)
+    audit_df = audit_df[["name", "category", "coverage", "stability", "dispersion", "active", "weight"]]
+
+    # Save
+    path = REGIME_AUDIT_DIR / f"{regime_label}_weights.parquet"
+    audit_df.to_parquet(path)
+
+    # Build short-name weights dict
+    wd = {}
+    for _, row in audit_df.iterrows():
+        short = {v: k for k, v in WEIGHT_MAP.items()}.get(row["name"])
+        if short:
+            wd[short] = row["weight"]
+    regime_weights[regime_label] = wd
+
+    n_active = int(audit_df["active"].sum())
+    print(f"\n  [{regime_label}] {n_active}/{len(audit_df)} active  "
+          f"(mean stab={audit_df['stability'].mean():.3f})")
+    for i, (_, row) in enumerate(audit_df.head(5).iterrows()):
+        print(f"    {i+1}. {row['name']:<32} stab={row['stability']:.3f}  w={row['weight']:.3f}")
+
+# ── Cross-regime stability comparison ───────────────────────────────────────
+print(f"\n{'─' * 70}")
+print("Cross-Regime Stability Comparison")
+print(f"{'─' * 70}")
+
+# Build pivot: factors × regimes = stability
+all_regime_labels = sorted(per_regime.keys())
+stab_rows = []
+for regime_label in all_regime_labels:
+    audit_df = per_regime[regime_label]
+    if audit_df.empty:
+        continue
+    for _, row in audit_df.iterrows():
+        stab_rows.append({
+            "factor": row["factor"],
+            "regime": regime_label,
+            "stability": row["stability"],
+        })
+stab_df = pd.DataFrame(stab_rows)
+
+if not stab_df.empty:
+    pivot = stab_df.pivot(index="factor", columns="regime", values="stability")
+    # Map factor column prefix back to readable names
+    pivot.index = [name_map.get(f, f) for f in pivot.index]
+    # Add global audit stability for reference
+    global_stab = dict(zip(audit["name"], audit["stability"]))
+    pivot.insert(0, "global", [global_stab.get(f, np.nan) for f in pivot.index])
+    # Compute regime spread (max - min) and sort by it (most regime-sensitive first)
+    regime_cols = [c for c in pivot.columns if c != "global"]
+    pivot["spread"] = pivot[regime_cols].max(axis=1) - pivot[regime_cols].min(axis=1)
+    pivot = pivot.sort_values("spread", ascending=False)
+
+    print(f"\n{'Factor':<32} {'Global':>7}", end="")
+    for rl in regime_cols:
+        print(f" {rl:>8}", end="")
+    print(f" {'Spread':>7}")
+    print("-" * (50 + 10 * len(regime_cols)))
+    for factor_name, row in pivot.iterrows():
+        g = row["global"]
+        flag = "!" if row["spread"] > 0.2 else " "
+        print(f"{flag}{factor_name:<31} {g:>7.3f}", end="")
+        for rl in regime_cols:
+            v = row[rl]
+            if pd.isna(v):
+                print(f" {'-':>8}", end="")
+            else:
+                # Highlight regime where this factor is strongest
+                best = row[regime_cols].max()
+                marker = "*" if v == best and row["spread"] > 0.15 else " "
+                print(f" {marker}{v:>7.3f}", end="")
+        print(f" {row['spread']:>7.3f}")
+
+# ── Build strategy weights for gtja_volume_price ────────────────────────
+print(f"\n{'─' * 70}")
+print("[5/5] Backtest: global vs per-regime weights")
+print(f"{'─' * 70}")
 
 # Build weight dict from audit
 audit_weights = {}
@@ -335,9 +450,11 @@ def run_backtest(weights: dict, label: str) -> dict:
 
 print("\nRunning backtests...\n")
 results = []
+
+# Always run baseline and global audit
 for w, label in [
     (baseline_w, "Equal (5 default)"),
-    (stab_w, "Audit-weighted (active)"),
+    (stab_w, "Audit-weighted (global)"),
 ]:
     print(f"  {label}...", end=" ", flush=True)
     t0 = time.time()
@@ -345,18 +462,31 @@ for w, label in [
     results.append(r)
     print(f"Sharpe={r['sharpe']:.2f} ({time.time() - t0:.0f}s)")
 
-print(f"\n{'Scheme':<30} {'#F':>4} {'Sharpe':>8} {'Ann.Ret':>9} {'MaxDD':>9} {'WinRate':>9} {'Total':>9}")
-print("-" * 85)
+# Per-regime weighted (for display, not a real regime-switching backtest)
+for regime_label, rw in sorted(regime_weights.items()):
+    if not rw:
+        continue
+    # Fill missing weights with 0
+    full_w = {k: rw.get(k, 0.0) for k in ALL_KEYS}
+    label = f"Audit-weighted ({regime_label})"
+    print(f"  {label}...", end=" ", flush=True)
+    t0 = time.time()
+    r = run_backtest(full_w, label)
+    results.append(r)
+    print(f"Sharpe={r['sharpe']:.2f} ({time.time() - t0:.0f}s)")
+
+print(f"\n{'Scheme':<35} {'#F':>4} {'Sharpe':>8} {'Ann.Ret':>9} {'MaxDD':>9} {'WinRate':>9} {'Total':>9}")
+print("-" * 90)
 for r in results:
     print(
-        f"{r['label']:<30} {r['n_f']:>4} "
+        f"{r['label']:<35} {r['n_f']:>4} "
         f"{r['sharpe']:>8.2f} {r['ann_ret']*100:>8.2f}% "
         f"{r['max_dd']*100:>8.2f}% {r['win_rate']*100:>8.1f}% "
         f"{r['total_ret']*100:>8.1f}%"
     )
 
 # Print active factor weights
-print(f"\nAudit-based weights ({sum(1 for v in stab_w.values() if v > 0)} active):")
+print(f"\nGlobal audit weights ({sum(1 for v in stab_w.values() if v > 0)} active):")
 for name in sorted(stab_w, key=lambda k: stab_w[k], reverse=True):
     w = stab_w[name]
     if w > 0:

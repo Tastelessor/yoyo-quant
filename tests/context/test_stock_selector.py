@@ -8,6 +8,7 @@ import pytest
 
 from src.context.stock_selector import (
     evaluate_factors,
+    evaluate_factors_by_regime,
     factor_coverage,
     factor_dispersion,
     rank_stability,
@@ -463,3 +464,118 @@ class TestEvaluateFactors:
             assert not np.isnan(row["coverage"])
             assert not np.isnan(row["stability"])
             assert not np.isnan(row["dispersion"])
+
+    def test_date_filter_restricts_dates(self) -> None:
+        """evaluate_factors with date_filter only uses matching dates."""
+        stable = _make_stable_rank_df(n_stocks=5, n_days=100)
+        all_dates = sorted(stable["date"].unique())
+        # Restrict to first half of dates
+        half_dates = pd.DatetimeIndex(all_dates[:50])
+        restricted = evaluate_factors(
+            stable, ["factor_a"], lookback=20, lag=5,
+            date_filter=half_dates,
+        )
+        full = evaluate_factors(
+            stable, ["factor_a"], lookback=20, lag=5,
+        )
+        # Metrics should differ because different date ranges used
+        assert restricted.loc[0, "stability"] != full.loc[0, "stability"], (
+            "Filtered audit should differ from full audit"
+        )
+
+    def test_date_filter_empty_returns_empty(self) -> None:
+        """date_filter with no matching dates returns empty DataFrame."""
+        df = _make_factor_df(n_stocks=5, n_days=20)
+        # Dates that don't exist in factor_df
+        future_dates = pd.DatetimeIndex(
+            pd.date_range("2030-01-01", periods=5, freq="B")
+        )
+        result = evaluate_factors(
+            df, ["factor_a"], lookback=5, lag=2,
+            date_filter=future_dates,
+        )
+        assert len(result) == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests: evaluate_factors_by_regime
+# ---------------------------------------------------------------------------
+
+class TestEvaluateFactorsByRegime:
+    def test_returns_dict(self) -> None:
+        df = _make_factor_df(n_stocks=5, n_days=60)
+        dates = sorted(df["date"].unique())
+        regime = pd.Series("test", index=dates)
+        result = evaluate_factors_by_regime(
+            df, ["factor_a"], regime, lookback=10, lag=3,
+        )
+        assert isinstance(result, dict)
+
+    def test_one_key_per_regime(self) -> None:
+        df = _make_factor_df(n_stocks=5, n_days=80)
+        dates = sorted(df["date"].unique())
+        # Two regimes splitting the date range in half
+        regime = pd.Series("trend_up", index=dates)
+        mid = len(dates) // 2
+        regime.iloc[mid:] = "range"
+        result = evaluate_factors_by_regime(
+            df, ["factor_a"], regime, lookback=10, lag=3,
+        )
+        assert set(result.keys()) == {"range", "trend_up"}
+
+    def test_each_regime_has_dataframe(self) -> None:
+        df = _make_stable_rank_df(n_stocks=5, n_days=80)
+        dates = sorted(df["date"].unique())
+        regime = pd.Series("trend_up", index=dates)
+        mid = len(dates) // 2
+        regime.iloc[mid:] = "range"
+        result = evaluate_factors_by_regime(
+            df, ["factor_a"], regime, lookback=10, lag=3,
+        )
+        for label, audit in result.items():
+            assert isinstance(audit, pd.DataFrame), f"{label}: expected DataFrame"
+            assert set(audit.columns) == {"factor", "coverage", "stability", "dispersion", "active"}
+            assert len(audit) == 1  # one factor
+
+    def test_regimes_differ(self) -> None:
+        """Different regimes should produce different audit results."""
+        stable = _make_stable_rank_df(n_stocks=10, n_days=120)
+        random = _make_random_rank_df(n_stocks=10, n_days=120)
+        dates = sorted(stable["date"].unique())
+
+        # First 80 days: stable data; last 40 days: random data
+        df = stable.copy()
+        split = 80
+        mask = df["date"].isin(dates[split:])
+        df.loc[mask, "factor_a"] = random.loc[mask, "factor_a"].values
+
+        regime = pd.Series("stable_half", index=dates)
+        regime.iloc[split:] = "random_half"
+
+        result = evaluate_factors_by_regime(
+            df, ["factor_a"], regime, lookback=20, lag=5,
+        )
+        s1 = result["random_half"].loc[0, "stability"]
+        s2 = result["stable_half"].loc[0, "stability"]
+        assert s2 > s1, (
+            f"Stable regime ({s2:.3f}) should beat random regime ({s1:.3f})"
+        )
+
+    def test_empty_factor_names(self) -> None:
+        df = _make_factor_df(n_stocks=5, n_days=20)
+        dates = sorted(df["date"].unique())
+        regime = pd.Series("trend", index=dates)
+        result = evaluate_factors_by_regime(
+            df, [], regime, lookback=10, lag=3,
+        )
+        for audit in result.values():
+            assert len(audit) == 0
+
+    def test_all_same_regime_single_key(self) -> None:
+        df = _make_factor_df(n_stocks=5, n_days=40)
+        dates = sorted(df["date"].unique())
+        regime = pd.Series("trend_up", index=dates)
+        result = evaluate_factors_by_regime(
+            df, ["factor_a"], regime, lookback=10, lag=3,
+        )
+        assert list(result.keys()) == ["trend_up"]

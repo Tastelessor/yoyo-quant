@@ -171,22 +171,27 @@ strategies:
   #       vol_change_pct_5d: 0.0            # GTJA #80  — audit stability -0.41
   #       close_vol_rank_cov_5d: 0.0        # GTJA #99  — audit stability -0.03
   #       vol_rsi_6d: 0.0                   # GTJA #102 — audit stability -0.02
-  # Regime switch: route to different strategies based on market regime.
-  # When regime_switch is set, it takes priority over combiner+rules.
+  # Regime switch: route to different strategies AND parameters based on
+  # market regime. When regime_switch is set, it takes priority over
+  # combiner+rules. Parameter routing rationale (2026-05-26 audit):
+  #   trend_up:   faster rebalance (trend confirmed)
+  #   trend_down: fewer longs, more shorts (defensive)
+  #   range:      normal (mean-reversion needs time)
+  #   volatile:   nimble (high vol → fast entry/exit, reduced exposure)
   regime_switch:
     regimes:
       trend_up:
         name: gtja_momentum
-        params: { rebalance: 20, top_n: 5, bottom_n: 3 }
+        params: { rebalance: 10, top_n: 5, bottom_n: 3 }
       trend_down:
         name: reversed_gtja_vwap
-        params: { rebalance: 20, top_n: 5, bottom_n: 3 }
+        params: { rebalance: 20, top_n: 3, bottom_n: 5 }
       range:
         name: reversed_gtja_vwap
         params: { rebalance: 20, top_n: 5, bottom_n: 3 }
       volatile:
         name: gtja_volatility
-        params: { rebalance: 20, top_n: 5, bottom_n: 3 }
+        params: { rebalance: 5, top_n: 3, bottom_n: 3 }
   # Fallback: combiner+rules used when regime_switch is not set.
   combiner:
     type: weighted_vote
