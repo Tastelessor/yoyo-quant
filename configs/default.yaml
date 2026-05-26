@@ -106,38 +106,71 @@ universe:
   start_date: "2023-01-01"
   end_date: "2026-05-23"
 
+stock_selector:
+  # ── Factor audit (run quarterly via evaluate_factors) ──
+  # All registered factors are evaluated. Those with median rank
+  # autocorrelation below min_stability are marked inactive and
+  # excluded from stock selection.
+  audit:
+    lookback: 60
+    lag: 5
+    min_coverage: 0.8
+    min_stability: 0.3
+    min_dispersion: 0.10
+
+  # ── Stock selection (run daily via select_tradable) ──
+  # Only factors that passed the audit are used. Each stock-date
+  # gets a pass count = number of factors where all three quality
+  # thresholds are met. Stocks ranked by pass count.
+  factors:
+    - calc_money_flow_6d           # GTJA #11 — directional money flow
+    - calc_up_down_vol_ratio_26d   # GTJA #40 — buy/sell volume pressure
+    - calc_obv_6d                  # GTJA #43 — OBV-like 6d
+    - calc_momentum_20d_return     # GTJA #88 — 20d trend strength
+    - calc_return_1d_times_vol     # GTJA #178 — daily return × volume
+  lookback: 60
+  lag: 5
+  min_coverage: 0.8
+  min_stability: 0.3
+  min_dispersion: 0.10
+  min_stocks: 5
+  top_n: null  # set to limit pool size; null = no limit
+
 portfolio:
   allocator: equal_weight
   capital: 1_000_000
 
 strategies:
-  # gtja_volume_price (18 volume/sentiment factors, 5 active by default):
+  # gtja_volume_price — weights derived from factor audit (2026-05-25).
+  # Run `python notebooks/run_factor_audit.py` to regenerate.
+  # Weights = max(stability, 0) / sum(...), re-run audit to update.
   #   name: gtja_volume_price
   #   params:
   #     rebalance: 20
   #     top_n: 5
   #     bottom_n: 3
   #     weights:
-  #       # Active (10y-validated):
-  #       money_flow_6d: 1.0              # GTJA #11  — 6d directional pressure
-  #       up_down_vol_26d: 1.0            # GTJA #40  — up/down volume ratio
-  #       obv_6d: 1.0                     # GTJA #43  — OBV-like 6d
-  #       shadow_ratio_20d: 1.0           # GTJA #118 — upper/lower shadow ratio ★
-  #       return_1d_times_vol: 1.0        # GTJA #178 — daily return × volume ★
-  #       # Disabled (weaker than baseline):
-  #       vol_rank_intraday_corr_6d: 0.0  # GTJA #1
-  #       vol_change_pct_5d: 0.0          # GTJA #80
-  #       return_6d_times_vol: 0.0        # GTJA #29
-  #       high_vol_rank_corr_3d: 0.0      # GTJA #32
-  #       close_vol_rank_cov_5d: 0.0      # GTJA #99
-  #       open_vol_corr_10d: 0.0          # GTJA #139
-  #       vwap_vol_rank_corr_5d: 0.0      # GTJA #90
-  #       williams_r_smoothed_6d: 0.0     # GTJA #47
-  #       candle_body_vol_composite: 0.0  # GTJA #54
-  #       open_vwap_close_vwap: 0.0       # GTJA #12
-  #       dollar_vol_std_6d: 0.0          # GTJA #70
-  #       vol_macd_9_26_12: 0.0           # GTJA #145
-  #       vol_rsi_6d: 0.0                 # GTJA #102
+  #       # Tier 1 (stability > 0.4):
+  #       up_down_vol_26d: 0.053            # GTJA #40  — audit stability 0.60
+  #       shadow_ratio_20d: 0.052           # GTJA #118 — audit stability 0.59
+  #       vol_macd_9_26_12: 0.042           # GTJA #145 — audit stability 0.48
+  #       williams_r_smoothed_6d: 0.041     # GTJA #47  — audit stability 0.47
+  #       # Tier 2 (stability 0.01-0.11, diversification only):
+  #       dollar_vol_std_6d: 0.009          # GTJA #70
+  #       open_vol_corr_10d: 0.007          # GTJA #139
+  #       open_vwap_close_vwap: 0.005       # GTJA #12
+  #       vol_rank_intraday_corr_6d: 0.005  # GTJA #1
+  #       return_6d_times_vol: 0.004        # GTJA #29
+  #       obv_6d: 0.004                     # GTJA #43
+  #       high_vol_rank_corr_3d: 0.004      # GTJA #32
+  #       money_flow_6d: 0.002              # GTJA #11
+  #       candle_body_vol_composite: 0.001  # GTJA #54
+  #       vwap_vol_rank_corr_5d: 0.000      # GTJA #90
+  #       # Excluded (negative stability, worse than random):
+  #       return_1d_times_vol: 0.0          # GTJA #178 — audit stability -0.03
+  #       vol_change_pct_5d: 0.0            # GTJA #80  — audit stability -0.41
+  #       close_vol_rank_cov_5d: 0.0        # GTJA #99  — audit stability -0.03
+  #       vol_rsi_6d: 0.0                   # GTJA #102 — audit stability -0.02
   # Regime switch: route to different strategies based on market regime.
   # When regime_switch is set, it takes priority over combiner+rules.
   regime_switch:
