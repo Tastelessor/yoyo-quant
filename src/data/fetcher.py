@@ -2,7 +2,6 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 import tushare as ts
@@ -254,3 +253,122 @@ def fetch_daily_batch(
         )
 
     return pd.concat(frames, ignore_index=True)
+
+
+def fetch_all_stocks(
+    date: str | None = None,
+    cache_dir: Path | str | None = None,
+) -> pd.DataFrame:
+    """获取所有上市 A 股基本信息 (tushare stock_basic)。
+
+    Parameters
+    ----------
+    date : str | None
+        快照日期，格式 "YYYY-MM-DD"。用于缓存键。
+    cache_dir : Path | str | None
+        缓存目录。None 时使用 data/raw/index/。
+
+    Returns
+    -------
+    DataFrame
+        Columns: code, name, industry, market, list_date.
+        已排除 ST 和北交所。
+    """
+    token = os.environ.get("TUSHARE_TOKEN", "")
+    if not token:
+        raise ValueError("TUSHARE_TOKEN 未设置，请在 .env 中配置")
+
+    if cache_dir is None:
+        cache_dir = Path(__file__).resolve().parents[2] / "data" / "raw" / "index"
+    else:
+        cache_dir = Path(cache_dir)
+
+    date_tag = date or "latest"
+    cache_file = cache_dir / f"all_stocks_{date_tag}.parquet"
+
+    if cache_file.exists():
+        return pd.read_parquet(cache_file)
+
+    api = ts.pro_api(token)
+    api._DataApi__http_url = _PROXY_URL
+
+    raw = api.stock_basic(
+        exchange="",
+        list_status="L",
+        fields="ts_code,name,industry,market,list_date",
+    )
+
+    if raw is None or raw.empty:
+        return pd.DataFrame(columns=["code", "name", "industry", "market", "list_date"])
+
+    df = raw.rename(columns={"ts_code": "code"})
+    # Strip exchange suffix: 000001.SZ -> 000001
+    df["code"] = df["code"].str.split(".").str[0]
+
+    # Exclude ST stocks
+    mask_st = df["name"].str.contains("ST", case=False, na=False)
+    # Exclude 北交所 (starts with 8 or 4)
+    mask_bj = df["code"].str.startswith(("8", "4"))
+    df = df[~mask_st & ~mask_bj].reset_index(drop=True)
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(cache_file, index=False)
+
+    return df
+
+
+def fetch_fundamentals(
+    date: str,
+    cache_dir: Path | str | None = None,
+) -> pd.DataFrame:
+    """获取全市场基本面数据 (tushare daily_basic)。
+
+    Parameters
+    ----------
+    date : str
+        交易日期，格式 "YYYY-MM-DD"。
+    cache_dir : Path | str | None
+        缓存目录。None 时使用 data/raw/fundamentals/。
+
+    Returns
+    -------
+    DataFrame
+        Columns: code, pe, pb, total_mv (亿元)。
+    """
+    token = os.environ.get("TUSHARE_TOKEN", "")
+    if not token:
+        raise ValueError("TUSHARE_TOKEN 未设置，请在 .env 中配置")
+
+    if cache_dir is None:
+        cache_dir = (
+            Path(__file__).resolve().parents[2] / "data" / "raw" / "fundamentals"
+        )
+    else:
+        cache_dir = Path(cache_dir)
+
+    date_str = date.replace("-", "")
+    cache_file = cache_dir / f"{date_str}.parquet"
+
+    if cache_file.exists():
+        return pd.read_parquet(cache_file)
+
+    api = ts.pro_api(token)
+    api._DataApi__http_url = _PROXY_URL
+
+    raw = api.daily_basic(
+        trade_date=date_str,
+        fields="ts_code,trade_date,pe,pb,total_mv",
+    )
+
+    if raw is None or raw.empty:
+        return pd.DataFrame(columns=["code", "pe", "pb", "total_mv"])
+
+    df = raw.rename(columns={"ts_code": "code"})
+    df["code"] = df["code"].str.split(".").str[0]
+    # total_mv is in 万元, convert to 亿元
+    df["total_mv"] = df["total_mv"] / 10_000
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    df[["code", "pe", "pb", "total_mv"]].to_parquet(cache_file, index=False)
+
+    return df[["code", "pe", "pb", "total_mv"]]

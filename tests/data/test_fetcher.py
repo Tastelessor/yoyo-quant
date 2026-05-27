@@ -4,7 +4,13 @@ import pandas as pd
 import pytest
 
 from src.data import OHLCV_SCHEMA
-from src.data.fetcher import fetch_daily, fetch_daily_batch, fetch_index_constituents
+from src.data.fetcher import (
+    fetch_all_stocks,
+    fetch_daily,
+    fetch_daily_batch,
+    fetch_fundamentals,
+    fetch_index_constituents,
+)
 
 
 @pytest.fixture
@@ -313,3 +319,83 @@ def test_fetch_daily_batch_sleeps_between_uncached(tmp_path, fake_daily_df):
         )
     assert mock_sleep.call_count == 2  # 2 sleeps between 3 uncached calls
     mock_sleep.assert_called_with(0.5)
+
+
+# --- fetch_all_stocks ---
+
+
+def test_fetch_all_stocks_returns_dataframe(tmp_path):
+    """应返回排除 ST 和北交所的股票列表。"""
+    mock_api = MagicMock()
+    mock_api.stock_basic.return_value = pd.DataFrame(
+        {
+            "ts_code": ["000001.SZ", "600519.SH", "000004.SZ", "830001.BJ"],
+            "name": ["平安银行", "贵州茅台", "*ST国华", "某北交所"],
+            "industry": ["银行", "白酒", "软件", "制造"],
+            "market": ["主板", "主板", "主板", "北交所"],
+            "list_date": ["19910403", "20010827", "19901201", "20210101"],
+        }
+    )
+    with (
+        patch("src.data.fetcher.ts") as mock_ts,
+        patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
+    ):
+        mock_ts.pro_api.return_value = mock_api
+        result = fetch_all_stocks(date="2026-05-22", cache_dir=tmp_path)
+    assert "000001" in result["code"].values
+    assert "600519" in result["code"].values
+    # ST should be excluded
+    assert "*ST国华" not in result["name"].values
+    # 北交所 should be excluded
+    assert "830001" not in result["code"].values
+
+
+def test_fetch_all_stocks_uses_cache(tmp_path):
+    """缓存存在时不应调用 API。"""
+    cache_file = tmp_path / "all_stocks_2026-05-22.parquet"
+    pd.DataFrame({"code": ["000001"], "name": ["平安银行"]}).to_parquet(
+        cache_file, index=False
+    )
+    with patch("src.data.fetcher.ts") as mock_ts:
+        result = fetch_all_stocks(date="2026-05-22", cache_dir=tmp_path)
+    assert list(result["code"]) == ["000001"]
+    mock_ts.pro_api.assert_not_called()
+
+
+# --- fetch_fundamentals ---
+
+
+def test_fetch_fundamentals_returns_dataframe(tmp_path):
+    """应返回包含 code, pe, pb, total_mv 的 DataFrame。"""
+    mock_api = MagicMock()
+    mock_api.daily_basic.return_value = pd.DataFrame(
+        {
+            "ts_code": ["000001.SZ", "600519.SH"],
+            "trade_date": ["20260522", "20260522"],
+            "pe": [5.5, 30.2],
+            "pb": [0.6, 10.1],
+            "total_mv": [2000000.0, 5000000.0],  # 万元
+        }
+    )
+    with (
+        patch("src.data.fetcher.ts") as mock_ts,
+        patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
+    ):
+        mock_ts.pro_api.return_value = mock_api
+        result = fetch_fundamentals("2026-05-22", cache_dir=tmp_path)
+    assert list(result.columns) == ["code", "pe", "pb", "total_mv"]
+    assert result["code"].iloc[0] == "000001"
+    # total_mv should be converted from 万元 to 亿元
+    assert result["total_mv"].iloc[0] == 200.0
+
+
+def test_fetch_fundamentals_uses_cache(tmp_path):
+    """缓存存在时不应调用 API。"""
+    cache_dir = tmp_path / "fundamentals"
+    cache_dir.mkdir()
+    cache_file = cache_dir / "20260522.parquet"
+    pd.DataFrame({"code": ["000001"], "pe": [5.5]}).to_parquet(cache_file, index=False)
+    with patch("src.data.fetcher.ts") as mock_ts:
+        result = fetch_fundamentals("2026-05-22", cache_dir=cache_dir)
+    assert list(result["code"]) == ["000001"]
+    mock_ts.pro_api.assert_not_called()

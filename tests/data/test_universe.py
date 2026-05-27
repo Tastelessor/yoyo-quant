@@ -5,6 +5,7 @@ import pytest
 
 from src.data.universe import (
     apply_data_filters,
+    apply_fundamental_filters,
     resolve_universe,
     resolve_universe_groups,
 )
@@ -282,3 +283,92 @@ def test_resolve_universe_index_source_deduplicates():
     ):
         result = resolve_universe(cfg)
     assert result == ["000001", "600519"]
+
+
+# --- apply_fundamental_filters ---
+
+
+@pytest.fixture
+def fundamentals():
+    """基本面数据。"""
+    return pd.DataFrame(
+        {
+            "code": ["000001", "600519", "000858", "300750"],
+            "pe": [5.5, 30.0, 25.0, -10.0],
+            "pb": [0.6, 10.0, 8.0, 5.0],
+            "total_mv": [200.0, 2000.0, 500.0, 80.0],
+        }
+    )
+
+
+def test_filter_min_market_cap(fundamentals):
+    """低于市值阈值的股票应被移除。"""
+    codes = ["000001", "600519", "000858", "300750"]
+    result = apply_fundamental_filters(codes, fundamentals, {"min_market_cap": 100})
+    assert "000001" in result  # 200 亿
+    assert "600519" in result  # 2000 亿
+    assert "000858" in result  # 500 亿
+    assert "300750" not in result  # 80 亿
+
+
+def test_filter_min_pe(fundamentals):
+    """PE 低于阈值的股票应被移除。"""
+    codes = ["000001", "600519", "000858", "300750"]
+    result = apply_fundamental_filters(codes, fundamentals, {"min_pe": 0})
+    assert "300750" not in result  # PE = -10 (亏损)
+
+
+def test_filter_max_pe(fundamentals):
+    """PE 高于阈值的股票应被移除。"""
+    codes = ["000001", "600519", "000858", "300750"]
+    result = apply_fundamental_filters(codes, fundamentals, {"max_pe": 20})
+    assert "000001" in result  # PE = 5.5
+    assert "600519" not in result  # PE = 30
+
+
+def test_fundamental_filter_combined(fundamentals):
+    """多个过滤条件应同时生效。"""
+    codes = ["000001", "600519", "000858", "300750"]
+    result = apply_fundamental_filters(
+        codes, fundamentals, {"min_market_cap": 100, "min_pe": 0, "max_pe": 50}
+    )
+    assert result == ["000001", "600519", "000858"]
+
+
+def test_fundamental_filter_preserves_order(fundamentals):
+    """过滤后应保持原始顺序。"""
+    codes = ["300750", "000858", "600519", "000001"]
+    result = apply_fundamental_filters(codes, fundamentals, {"min_market_cap": 100})
+    assert result == ["000858", "600519", "000001"]
+
+
+def test_filter_empty_fundamentals():
+    """空基本面数据应返回全部代码。"""
+    codes = ["000001", "600519"]
+    result = apply_fundamental_filters(codes, pd.DataFrame(), {"min_market_cap": 100})
+    assert result == ["000001", "600519"]
+
+
+def test_resolve_universe_all_source():
+    """source=all 应从 fetch_all_stocks + fetch_fundamentals 获取代码。"""
+    cfg = {
+        "source": "all",
+        "fetch_date": "2026-05-22",
+        "filters": {"min_market_cap": 100, "min_pe": 0},
+    }
+    stocks_df = pd.DataFrame({"code": ["000001", "600519", "000858"]})
+    fund_df = pd.DataFrame(
+        {
+            "code": ["000001", "600519", "000858"],
+            "pe": [5.0, 30.0, -1.0],
+            "total_mv": [200.0, 2000.0, 500.0],
+        }
+    )
+    with (
+        patch("src.data.fetcher.fetch_all_stocks", return_value=stocks_df),
+        patch("src.data.fetcher.fetch_fundamentals", return_value=fund_df),
+    ):
+        result = resolve_universe(cfg)
+    assert "000001" in result
+    assert "600519" in result
+    assert "000858" not in result  # PE < 0

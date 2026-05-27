@@ -28,7 +28,9 @@ def sample_data():
                     "high": close + 0.3,
                     "low": close - 0.3,
                     "close": close,
-                    "volume": np.random.randint(500_000, 5_000_000, size=30).astype(float),
+                    "volume": np.random.randint(500_000, 5_000_000, size=30).astype(
+                        float
+                    ),
                 }
             )
         )
@@ -45,8 +47,16 @@ def test_instantiation():
     strat = get_strategy(
         "multi_category",
         categories=[
-            {"name": "gtja_momentum", "weight": 1.0, "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0}},
-            {"name": "gtja_volume_price", "weight": 0.5, "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0}},
+            {
+                "name": "gtja_momentum",
+                "weight": 1.0,
+                "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0},
+            },
+            {
+                "name": "gtja_volume_price",
+                "weight": 0.5,
+                "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0},
+            },
         ],
     )
     assert isinstance(strat, MultiCategoryStrategy)
@@ -67,7 +77,11 @@ def test_single_category(sample_data):
     multi = get_strategy(
         "multi_category",
         categories=[
-            {"name": "gtja_momentum", "weight": 1.0, "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0}},
+            {
+                "name": "gtja_momentum",
+                "weight": 1.0,
+                "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0},
+            },
         ],
     )
 
@@ -85,8 +99,16 @@ def test_two_categories_combine(sample_data):
     strat = get_strategy(
         "multi_category",
         categories=[
-            {"name": "gtja_momentum", "weight": 1.0, "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0}},
-            {"name": "gtja_volume_price", "weight": 1.0, "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0}},
+            {
+                "name": "gtja_momentum",
+                "weight": 1.0,
+                "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0},
+            },
+            {
+                "name": "gtja_volume_price",
+                "weight": 1.0,
+                "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0},
+            },
         ],
     )
 
@@ -102,22 +124,38 @@ def test_weighted_combination(sample_data):
     strat_a = get_strategy(
         "multi_category",
         categories=[
-            {"name": "gtja_momentum", "weight": 1.0, "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0}},
+            {
+                "name": "gtja_momentum",
+                "weight": 1.0,
+                "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0},
+            },
         ],
     )
     # Category B only
     strat_b = get_strategy(
         "multi_category",
         categories=[
-            {"name": "gtja_volume_price", "weight": 1.0, "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0}},
+            {
+                "name": "gtja_volume_price",
+                "weight": 1.0,
+                "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0},
+            },
         ],
     )
     # Equal weight combination
     strat_ab = get_strategy(
         "multi_category",
         categories=[
-            {"name": "gtja_momentum", "weight": 1.0, "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0}},
-            {"name": "gtja_volume_price", "weight": 1.0, "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0}},
+            {
+                "name": "gtja_momentum",
+                "weight": 1.0,
+                "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0},
+            },
+            {
+                "name": "gtja_volume_price",
+                "weight": 1.0,
+                "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0},
+            },
         ],
     )
 
@@ -140,8 +178,16 @@ def test_confidence_range(sample_data):
     strat = get_strategy(
         "multi_category",
         categories=[
-            {"name": "gtja_momentum", "weight": 1.0, "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0}},
-            {"name": "gtja_volume_price", "weight": 0.5, "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0}},
+            {
+                "name": "gtja_momentum",
+                "weight": 1.0,
+                "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0},
+            },
+            {
+                "name": "gtja_volume_price",
+                "weight": 0.5,
+                "params": {"rebalance": 20, "top_n": 3, "bottom_n": 0},
+            },
         ],
     )
 

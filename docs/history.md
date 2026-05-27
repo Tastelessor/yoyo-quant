@@ -534,3 +534,97 @@
 | 2026-05-25 | 行业矩阵 + universe group 支持 | 为 context 层因子选择（按行业路由）做准备 |
 | 2026-05-25 | 股票选择器放在 context 层而非 data 层 | 选择逻辑依赖因子质量评估，属于 context 路由而非纯数据过滤 |
 | 2026-05-26 | context 层路线图：股票选择→因子选择→参数路由 | 逐步建立「特定行情+特定股票+特定参数+特定策略因子」的完整闭环 |
+
+---
+
+## Phase 10: 股票池探索 + 风控实验 ✅ 完成
+
+### 目标
+验证扩大股票池（CSI 500 / 全市场）是否提升 alpha，测试小止盈大止损效果。
+
+### Task 1: CSI 500 中盘股扩展 ✅
+- [x] `fetch_index_constituents()` — tushare `index_weight` API + parquet 缓存
+- [x] `fetch_daily_batch()` — 批量获取 + 限速（0.5s/只）+ 进度日志
+- [x] `resolve_universe()` 支持 `source: index`
+- [x] `configs/csi500.yaml`
+- [x] 对比 notebook: `notebooks/csi300_vs_csi500.ipynb`
+- [x] 测试通过（18 fetcher + 24 universe + 4 pipeline tests）
+
+**回测结果（2023-01 ~ 2026-05，5 策略）：**
+
+| Strategy | CSI300 Sharpe | CSI500 Sharpe | Delta |
+|----------|---------------|---------------|-------|
+| reversed_gtja_vwap | 0.606 | 0.106 | -0.500 |
+| gtja_momentum | 0.485 | 0.246 | -0.239 |
+| gtja_volatility | 0.427 | 0.047 | -0.380 |
+| gtja_volume_price | 0.352 | 0.369 | +0.017 |
+| gtja_vwap | 0.336 | 0.382 | +0.046 |
+| **平均** | **0.441** | **0.230** | **-0.211** |
+
+**结论**：CSI 300 全面碾压 CSI 500。中盘股噪声大、趋势持续性差、流动性低（CSI 500 均量仅为 CSI 300 的 48%）。
+
+### Task 2: MultiCategoryStrategy ✅
+- [x] `src/strategies/builtin/multi_category.py` — 6 类别加权投票组合
+- [x] 注册到策略表，测试通过（7 tests）
+
+**回测结果：**
+
+| Strategy | Sharpe | Return | MaxDD |
+|----------|--------|--------|-------|
+| reversed_gtja_vwap | 0.606 | 245.6% | 46.4% |
+| multi_category (4cat equal) | 0.487 | 164.6% | 35.6% |
+
+**结论**：多类别组合稀释 alpha（弱策略拖累强策略），但降低 MaxDD。
+
+### Task 3: 小止盈大止损实验 ✅
+- [x] `FixedTakeProfitRule` — 固定百分比止盈（priority=122）
+- [x] `BacktestEngine` 新增 `stop_loss` / `take_profit` 参数
+- [x] 注册到规则引擎，测试通过（7 tests）
+- [x] `_ensure_avg_cost()` — 自动推算 entry price
+
+**回测结果（reversed_gtja_vwap，CSI 300）：**
+
+| Config | Sharpe | Return | MaxDD | Win% |
+|--------|--------|--------|-------|------|
+| No SL/TP | 0.606 | 245.6% | 46.4% | 56.2% |
+| SL=-15% TP=+5% | 0.577 | 234.4% | 48.9% | 33.2% |
+| SL=-15% TP=+10% | 0.585 | 238.6% | 48.8% | 46.9% |
+| SL=-15% TP=+15% | 0.586 | 241.7% | 48.9% | 58.1% |
+
+**结论**：SL/TP 对均值回归策略有害 — 止损在最低点割肉，止盈截断利润。SL/TP 适合趋势策略，不适合当前主力策略。
+
+### Task 4: 全市场基本筛选 ✅
+- [x] `fetch_all_stocks()` — tushare `stock_basic`，排除 ST + 北交所
+- [x] `fetch_fundamentals()` — tushare `daily_basic`，pe/pb/total_mv
+- [x] `apply_fundamental_filters()` — min_market_cap/min_pe/max_pe
+- [x] `resolve_universe()` 支持 `source: "all"`
+- [x] `configs/full_market.yaml`
+
+**回测结果（reversed_gtja_vwap，2023-01 ~ 2026-05）：**
+
+| Universe | Stocks | Sharpe | Return | MaxDD |
+|----------|--------|--------|--------|-------|
+| CSI 300 | 100 | 0.606 | 245.6% | 46.4% |
+| Full Market | 2375 | 0.274 | 67.2% | 13.0% |
+
+**结论**：Alpha 集中在大盘股。全市场稀释 alpha 但大幅降低 MaxDD。需要用 stock_selector 从全市场筛 top 50-100 只因子质量最高的股票。
+
+### 测试统计
+- 新增测试：18 (fetcher) + 14 (universe) + 7 (multi_category) + 7 (take_profit) + 4 (pipeline) = 50 tests
+- 总测试数：633 tests
+
+### 关键发现总结
+1. **CSI 500 不提供 alpha 增量** — 中盘股噪声大，所有策略在 CSI 500 上表现更差
+2. **多类别组合稀释 alpha** — 弱策略拖累强策略，但降低 MaxDD
+3. **SL/TP 对均值回归有害** — 止损割肉、止盈截断利润，但可用于趋势策略
+4. **Alpha 集中在大盘股** — 全市场 Sharpe 0.274 vs CSI 300 的 0.606
+5. **下一步：stock_selector** — 从全市场筛 top 50-100 只因子质量最高的股票，平衡 alpha 集中度和选股空间
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-05-27 | CSI 500 扩展无效 | 所有策略 Sharpe 下降，中盘股噪声大、流动性低 |
+| 2026-05-27 | MultiCategory 用加权投票而非独立组合 | 复用现有 WeightedVoteCombiner，改动最小 |
+| 2026-05-27 | SL/TP 放在 BacktestEngine 而非 RiskRule | RiskRule 操作 target positions（无 entry price），Engine 操作 actual holdings |
+| 2026-05-27 | 全市场 + stock_selector 是正确方向 | 全市场提供选股空间，stock_selector 保证因子质量 |

@@ -1,12 +1,10 @@
 """Stop loss rule tests."""
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from src.risk.rules import RuleContext
 from src.risk.stop_loss import ATRStopLossRule, FixedStopLossRule, FixedTakeProfitRule
-
 
 # --- Fixtures ---
 

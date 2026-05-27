@@ -58,9 +58,13 @@
 | context (股票选择器) | ✅ 完成 | stock_selector.py: 因子质量评估 + 动态股票池筛选 + 40 tests |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
 | context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
+| strategies (多类别组合) | ✅ 完成 | multi_category.py: 6 类别加权投票 + 7 tests |
+| data (指数成分股) | ✅ 完成 | fetcher.py: fetch_index_constituents + fetch_daily_batch + 18 tests |
+| data (全市场基本筛选) | ✅ 完成 | fetcher.py: fetch_all_stocks + fetch_fundamentals + apply_fundamental_filters |
+| risk (止盈规则) | ✅ 完成 | stop_loss.py: FixedTakeProfitRule + BacktestEngine SL/TP 参数 + 7 tests |
 | execution | 🔲 未开始 | 统一下单接口 |
 
-**测试总计**：597 tests（43 个测试文件）
+**测试总计**：633 tests（47 个测试文件）
 
 ## 目录结构
 
@@ -103,6 +107,8 @@ src/
 ├── strategies/
 │   ├── base.py                  # Strategy ABC
 │   ├── combiner.py              # WeightedVoteCombiner + FilterCombiner
+│   ├── builtin/
+│   │   ├── multi_category.py    # 多类别因子组合策略
 │   ├── registry.py              # 策略注册表 (13 策略)
 │   ├── reversed.py              # ReversedStrategy 包装器
 │   └── builtin/
@@ -124,7 +130,9 @@ src/
 ├── visualization/
 └── execution/
 configs/
-└── default.yaml
+├── default.yaml               # CSI 300 默认配置
+├── csi500.yaml                # CSI 500 中盘配置
+└── full_market.yaml           # 全市场基本筛选配置
 ```
 
 ## Context 层路线图
@@ -169,12 +177,14 @@ configs/
 
 ### 可行路径（优先级排序）
 
-| # | 方向 | 层级 | 预期增量 | 说明 |
-|---|------|------|---------|------|
-| A | **多类别因子组合** | 信号层 | 大 | 6 个类别加权组合（momentum+mean_rev+vol_price+volatility+vwap+trend），而非只用 mean_reversion。多个低相关 alpha 源叠加可把 Sharpe 从 0.56 推到 0.7+ |
-| B | **行业感知分配** | 组合层 | 中 | 不同行业最优策略不同（科技 momentum Sharpe 0.61 vs 消费 VWAP 0.49）。行业×策略路由的分化 > regime×策略路由 |
-| ~~C~~ | ~~扩大股票池到中盘~~ | ~~数据层~~ | ~~中~~ | **已验证无效**。CSI 500 平均 Sharpe 0.23 vs CSI 300 的 0.44，所有策略在中盘股上表现更差（详见下方） |
-| D | Execution 模块 | 基础层 | — | 统一下单接口。不做能赚钱，但管道不完整 |
+| # | 方向 | 层级 | 状态 | 说明 |
+|---|------|------|------|------|
+| A | ~~多类别因子组合~~ | 信号层 | **已验证** | Sharpe 0.487 vs 单策略 0.606。弱策略稀释 alpha，但降低 MaxDD |
+| B | **行业感知分配** | 组合层 | 待做 | 不同行业最优策略不同。行业×策略路由的分化 > regime×策略路由 |
+| C | ~~CSI 500 中盘扩展~~ | 数据层 | **已验证无效** | CSI 500 平均 Sharpe 0.23 vs CSI 300 的 0.44 |
+| **E** | **全市场 + stock_selector** | 数据层 | **下一步** | 从全市场筛 top 50-100 只因子质量最高的股票。全市场 Sharpe 0.274（稀释），但 stock_selector 可精选子集 |
+| F | **小止盈大止损** | 风控层 | **已实现但不适用** | SL/TP 对均值回归有害（割肉+截断利润），适合趋势策略 |
+| D | Execution 模块 | 基础层 | 待做 | 统一下单接口 |
 
 ### Direction C 验证结果（2026-05-27）
 
@@ -193,12 +203,20 @@ CSI 300 vs CSI 500 回测（2023-01 ~ 2026-05，5 策略）：
 
 ### 执行建议
 
-**先 A → 验证 → 再 B**（C 已排除）
+**下一步：E（全市场 + stock_selector）→ 验证 → B（行业轮动）**
 
-A 是最大的增量来源，且改动最小（用一个 MultiCategoryStrategy 包装 6 个类别，weighted vote 输出信号）。验证后如果 Sharpe 过 0.7，再做 B 进一步优化分配。
-- **Coverage**：因子值是否可计算？
-- **Rank Stability**：排名是否跨期稳定（rank autocorrelation）？
-- **Dispersion**：因子是否区分股票（cross-sectional CV）？
+E 是当前最有希望的方向：从全市场 5000+ 只股票中，用 stock_selector 按因子质量筛 top 50-100 只。这既利用了全市场的选股空间（比 CSI 300 更广），又保持了 alpha 集中度（不全量交易 2400 只）。
+
+已有基础设施：
+- `fetch_all_stocks()` + `fetch_fundamentals()` — 全市场数据获取
+- `apply_fundamental_filters()` — 市值/PE 过滤
+- `select_tradable()` — 因子质量评估 + 动态选股
+- `configs/full_market.yaml` — 全市场配置
+
+需要做的：
+- 将 stock_selector 集成到回测管道（按 rebalance 周期动态选股）
+- 对比：CSI 300 vs full_market_top50 vs full_market_top100
+- 验证 stock_selector 是否能从全市场中找到比 CSI 300 更好的股票
 
 ## 策略矩阵（10 年窗口，2016-2026）
 

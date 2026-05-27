@@ -1,11 +1,16 @@
 """股票池解析与过滤。
 
-根据配置解析股票池，支持手动指定代码、ST 排除，以及基于行情数据的流动性过滤。
+根据配置解析股票池，支持手动指定代码、指数成分股、全市场基本筛选，
+以及基于行情数据的流动性过滤。
 """
 
 from __future__ import annotations
 
+import logging
+
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_universe(
@@ -39,6 +44,22 @@ def resolve_universe(
         index_code = cfg.get("index_code", "000905.SH")
         fetch_date = cfg.get("fetch_date")
         codes = fetch_index_constituents(index_code, date=fetch_date)
+    elif source == "all":
+        from src.data.fetcher import fetch_all_stocks, fetch_fundamentals
+
+        fetch_date = cfg.get("fetch_date")
+        stocks_df = fetch_all_stocks(date=fetch_date)
+        codes = stocks_df["code"].tolist()
+
+        filters = cfg.get("filters") or {}
+        if any(k in filters for k in ("min_market_cap", "min_pe", "max_pe")):
+            if fetch_date:
+                fundamentals = fetch_fundamentals(fetch_date)
+                codes = apply_fundamental_filters(codes, fundamentals, filters)
+                logger.info(
+                    "After fundamental filters: %d stocks (from %d)",
+                    len(codes), len(stocks_df),
+                )
     else:
         codes = list(cfg.get("codes") or [])
 
@@ -118,3 +139,51 @@ def resolve_universe_groups(cfg: dict) -> dict[str, list[str]]:
     """
     groups = cfg.get("universe_groups") or {}
     return {name: list(g.get("codes", [])) for name, g in groups.items()}
+
+
+def apply_fundamental_filters(
+    codes: list[str],
+    fundamentals: pd.DataFrame,
+    filters: dict,
+) -> list[str]:
+    """基于基本面数据过滤股票池。
+
+    Parameters
+    ----------
+    codes : list[str]
+        待过滤的股票代码列表。
+    fundamentals : DataFrame
+        基本面数据，必须包含 code, pe, total_mv 列。
+    filters : dict
+        过滤条件：
+        - min_market_cap: float，最小总市值（亿元）
+        - min_pe: float，最小 PE（排除亏损）
+        - max_pe: float，最大 PE（排除极端高估）
+
+    Returns
+    -------
+    list[str]
+        过滤后的代码列表，保持原始顺序。
+    """
+    if fundamentals.empty:
+        return codes
+
+    fund = fundamentals.set_index("code")
+    result = list(codes)
+
+    min_mv = filters.get("min_market_cap")
+    if min_mv is not None and "total_mv" in fund.columns:
+        valid = set(fund[fund["total_mv"] >= min_mv].index)
+        result = [c for c in result if c in valid]
+
+    min_pe = filters.get("min_pe")
+    if min_pe is not None and "pe" in fund.columns:
+        valid = set(fund[fund["pe"] >= min_pe].index)
+        result = [c for c in result if c in valid]
+
+    max_pe = filters.get("max_pe")
+    if max_pe is not None and "pe" in fund.columns:
+        valid = set(fund[fund["pe"] <= max_pe].index)
+        result = [c for c in result if c in valid]
+
+    return result
