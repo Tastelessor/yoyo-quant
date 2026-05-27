@@ -141,3 +141,116 @@ class TestWalkForwardBacktest:
             exposure_fn=lambda dates: pd.Series(0.5, index=dates),
         )
         assert len(result) > 0
+
+
+def _make_selector_fn(selected_codes):
+    """Create a stock_selector_fn that returns only selected_codes for all dates."""
+    def selector(factor_df):
+        dates = factor_df["date"].unique()
+        return {d: selected_codes for d in dates}
+    return selector
+
+
+def _make_empty_selector():
+    """Create a stock_selector_fn that returns empty pool for all dates."""
+    def selector(factor_df):
+        dates = factor_df["date"].unique()
+        return {d: [] for d in dates}
+    return selector
+
+
+class TestWalkForwardWithStockSelector:
+    """Test walk-forward backtest with dynamic stock selection."""
+
+    def test_none_preserves_behavior(self):
+        """stock_selector=None should produce identical results."""
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        result = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+        )
+        result_with_none = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+            stock_selector_fn=None,
+        )
+        assert len(result) == len(result_with_none)
+        assert list(result.columns) == list(result_with_none.columns)
+
+    def test_selector_filters_stocks(self):
+        """Selector that picks 1 code should reduce unique codes in signals."""
+        data = _make_stock_data("2023-01-01", "2025-12-31", codes=["000001", "000002", "000003"])
+        selector = _make_selector_fn(["000001"])
+
+        result = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+            stock_selector_fn=selector,
+        )
+        assert len(result) > 0
+
+    def test_empty_pool_produces_zero_metrics(self):
+        """Empty selector pool should produce zero-metric rows, not crash."""
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        selector = _make_empty_selector()
+
+        result = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+            stock_selector_fn=selector,
+        )
+        assert len(result) > 0
+        assert (result["total_return"] == 0.0).all()
+        assert (result["trade_count"] == 0).all()
+
+    def test_result_columns_unchanged(self):
+        """Result DataFrame should have same columns with or without selector."""
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        selector = _make_selector_fn(["000001"])
+
+        result_no_sel = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+        )
+        result_with_sel = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+            stock_selector_fn=selector,
+        )
+        assert set(result_no_sel.columns) == set(result_with_sel.columns)
+
+
+class TestWalkForwardWithIndustryCap:
+    """Test walk-forward backtest with industry cap."""
+
+    def test_industry_cap_none_preserves_behavior(self):
+        """industry_map=None should produce identical results."""
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        r1 = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+        )
+        r2 = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+            industry_map=None,
+        )
+        assert len(r1) == len(r2)
+        assert list(r1.columns) == list(r2.columns)
+
+    def test_industry_cap_with_mapping(self):
+        """With industry_map, should still produce valid results."""
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        industry_map = {"000001": "银行", "000002": "科技"}
+        result = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+            industry_map=industry_map, max_industry_weight=0.50,
+        )
+        assert len(result) > 0
+        assert set(result.columns) == {
+            "period", "train_start", "train_end",
+            "test_start", "test_end", "total_return", "annual_return",
+            "sharpe_ratio", "max_drawdown", "win_rate", "trade_count",
+        }
+
+    def test_industry_cap_with_missing_codes(self):
+        """industry_map with missing codes should not crash."""
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        industry_map = {"000001": "银行"}  # 000002 missing -> "其他"
+        result = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+            industry_map=industry_map, max_industry_weight=0.50,
+        )
+        assert len(result) > 0

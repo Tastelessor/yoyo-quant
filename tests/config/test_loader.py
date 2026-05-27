@@ -11,6 +11,7 @@ import pandas as pd
 from src.config.loader import (
     build_regime_switch,
     build_risk_engine,
+    build_stock_selector,
     build_strategies,
     load_config,
 )
@@ -277,3 +278,45 @@ class TestBuildRegimeSwitch:
         rs = build_regime_switch(cfg)
         assert rs.regimes["trend_up"].weights == {"money_flow_6d": 0.9}
         assert rs.regimes["range"].weights == {"obv_6d": 0.8}
+
+
+class TestBuildStockSelector:
+    """Tests for build_stock_selector config loader."""
+
+    def test_returns_callable_when_section_exists(self):
+        cfg = {
+            "stock_selector": {
+                "factors": ["calc_money_flow_6d", "calc_obv_6d"],
+                "lookback": 60,
+                "top_n": 50,
+            }
+        }
+        fn = build_stock_selector(cfg)
+        assert callable(fn)
+
+    def test_returns_none_when_no_section(self):
+        cfg = {"strategies": {"rules": []}}
+        assert build_stock_selector(cfg) is None
+
+    def test_returns_none_when_empty_factors(self):
+        cfg = {"stock_selector": {"factors": []}}
+        assert build_stock_selector(cfg) is None
+
+    def test_returns_none_when_factors_missing(self):
+        cfg = {"stock_selector": {"lookback": 60}}
+        assert build_stock_selector(cfg) is None
+
+    def test_uses_default_params_when_optional_keys_missing(self):
+        cfg = {"stock_selector": {"factors": ["calc_money_flow_6d"]}}
+        fn = build_stock_selector(cfg)
+        assert fn is not None
+
+    def test_top_n_passthrough(self):
+        cfg = {"stock_selector": {"factors": ["calc_money_flow_6d"], "top_n": 100}}
+        fn = build_stock_selector(cfg)
+        assert fn is not None
+
+    def test_min_pass_count_passthrough(self):
+        cfg = {"stock_selector": {"factors": ["calc_money_flow_6d"], "min_pass_count": 3}}
+        fn = build_stock_selector(cfg)
+        assert fn is not None

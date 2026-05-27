@@ -92,6 +92,51 @@ def build_risk_engine(cfg: dict) -> RuleEngine:
     return RuleEngine(rules)
 
 
+def build_stock_selector(cfg: dict):
+    """Build stock selector callable from config.
+
+    Reads the ``stock_selector`` section and returns a callable
+    that wraps ``select_tradable`` with the configured parameters.
+
+    Parameters
+    ----------
+    cfg : dict
+        Full config dict containing a ``stock_selector`` section.
+
+    Returns
+    -------
+    callable or None
+        ``(factor_df) -> dict[pd.Timestamp, list[str]]``
+        Returns None if no ``stock_selector`` section exists or
+        ``factors`` list is empty/missing.
+    """
+    ss_cfg = cfg.get("stock_selector")
+    if ss_cfg is None:
+        return None
+
+    factor_names = ss_cfg.get("factors")
+    if not factor_names:
+        return None
+
+    params = {
+        "lookback": ss_cfg.get("lookback", 60),
+        "lag": ss_cfg.get("lag", 5),
+        "min_coverage": ss_cfg.get("min_coverage", 0.8),
+        "min_stability": ss_cfg.get("min_stability", 0.3),
+        "min_dispersion": ss_cfg.get("min_dispersion", 0.10),
+        "min_stocks": ss_cfg.get("min_stocks", 5),
+        "top_n": ss_cfg.get("top_n"),
+        "min_pass_count": ss_cfg.get("min_pass_count", 1),
+    }
+
+    from src.context.stock_selector import select_tradable
+
+    def selector(factor_df):
+        return select_tradable(factor_df, factor_names, **params)
+
+    return selector
+
+
 def build_regime_switch(cfg: dict):
     """Build RegimeSwitchStrategy from config.
 

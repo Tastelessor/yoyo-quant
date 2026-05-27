@@ -267,13 +267,14 @@ def select_tradable(
     min_dispersion: float = 0.10,
     min_stocks: int = 5,
     top_n: int | None = None,
+    min_pass_count: int = 1,
 ) -> dict[pd.Timestamp, list[str]]:
     """Select tradable stocks for each date by filtering on factor quality.
 
     For each factor in *factor_names*, every stock-date is scored on three
     dimensions. A stock passes a factor when all three thresholds are met.
-    Stocks passing the most factors are selected each date, capped at
-    *top_n* stocks.
+    Stocks with at least *min_pass_count* passing factors are kept, then
+    sorted by pass count descending and capped at *top_n*.
 
     Parameters
     ----------
@@ -298,6 +299,9 @@ def select_tradable(
     top_n : int or None
         Maximum number of stocks to select per date. None = no limit.
         Default None.
+    min_pass_count : int
+        Minimum number of factors a stock must pass to be included.
+        Default 1. Stocks passing fewer factors are excluded.
 
     Returns
     -------
@@ -335,7 +339,7 @@ def select_tradable(
         day_counts = pass_counts[day_mask]
         day_codes = factor_df.loc[day_mask, "code"]
 
-        passing = day_counts[day_counts > 0]
+        passing = day_counts[day_counts >= min_pass_count]
         if len(passing) < min_stocks:
             continue
 

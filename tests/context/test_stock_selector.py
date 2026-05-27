@@ -381,6 +381,55 @@ class TestSelectTradable:
             f"Strict ({strict_total}) should not exceed lenient ({lenient_total})"
         )
 
+    def test_min_pass_count_filters_low_quality(self) -> None:
+        """Stocks passing fewer than min_pass_count factors should be excluded."""
+        # With 1 factor, min_pass_count=1 is same as default (>0)
+        df = _make_factor_df(n_stocks=5, n_days=20)
+        result = select_tradable(
+            df, ["factor_a"], lookback=5, lag=2,
+            min_coverage=0.0, min_stability=-1.0, min_dispersion=0.0,
+            min_stocks=1, min_pass_count=1,
+        )
+        assert len(result) > 0
+
+    def test_min_pass_count_higher_than_factors_returns_empty(self) -> None:
+        """If min_pass_count > number of factors, nothing can pass."""
+        df = _make_factor_df(n_stocks=5, n_days=20)
+        result = select_tradable(
+            df, ["factor_a"], lookback=5, lag=2,
+            min_coverage=0.0, min_stability=-1.0, min_dispersion=0.0,
+            min_stocks=1, min_pass_count=2,  # only 1 factor, need 2
+        )
+        assert result == {}
+
+    def test_min_pass_count_with_multiple_factors(self) -> None:
+        """With 2 factors, min_pass_count=2 should keep only stocks passing both."""
+        df = _make_factor_df(n_stocks=5, n_days=20)
+        # lenient: both factors pass for all stocks
+        result_all = select_tradable(
+            df, ["factor_a", "factor_b"], lookback=5, lag=2,
+            min_coverage=0.0, min_stability=-1.0, min_dispersion=0.0,
+            min_stocks=1, min_pass_count=1,
+        )
+        result_strict = select_tradable(
+            df, ["factor_a", "factor_b"], lookback=5, lag=2,
+            min_coverage=0.0, min_stability=-1.0, min_dispersion=0.0,
+            min_stocks=1, min_pass_count=2,
+        )
+        # Both should pass since all thresholds are lenient
+        assert len(result_all) > 0
+        assert len(result_strict) > 0
+
+    def test_min_pass_count_preserves_order(self) -> None:
+        """Stocks should still be sorted by pass_count descending."""
+        df = _make_factor_df(n_stocks=5, n_days=20)
+        result = select_tradable(
+            df, ["factor_a", "factor_b"], lookback=5, lag=2,
+            min_coverage=0.0, min_stability=-1.0, min_dispersion=0.0,
+            min_stocks=1, min_pass_count=1,
+        )
+        assert len(result) > 0
+
 
 # ---------------------------------------------------------------------------
 # Tests: evaluate_factors

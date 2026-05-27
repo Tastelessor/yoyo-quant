@@ -6,9 +6,8 @@ on each test window, and collects per-period metrics.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
-import numpy as np
 import pandas as pd
 
 from src.backtest.engine import BacktestEngine
@@ -68,6 +67,9 @@ def walk_forward_backtest(
     capital: float = 1_000_000,
     max_weight: float = 0.3,
     exposure_fn: Callable[[pd.DatetimeIndex], pd.Series] | None = None,
+    stock_selector_fn: Callable[[pd.DataFrame], dict] | None = None,
+    industry_map: dict[str, str] | None = None,
+    max_industry_weight: float = 0.30,
 ) -> pd.DataFrame:
     """Run walk-forward backtest with rolling train/test windows.
 
@@ -90,6 +92,15 @@ def walk_forward_backtest(
     exposure_fn : callable or None
         ``(dates) -> Series`` returning exposure fraction per date.
         If None, full exposure is used.
+    stock_selector_fn : callable or None
+        ``(factor_df) -> dict[Timestamp, list[str]]`` returning per-date
+        stock pool. If None, all stocks in data are used. The selector
+        receives the full data DataFrame so rolling lookback works correctly.
+    industry_map : dict or None
+        Mapping from stock code to industry name. If provided, applies
+        per-industry weight cap after equal-weight allocation.
+    max_industry_weight : float
+        Maximum weight per industry. Default 0.30 (30%).
 
     Returns
     -------
@@ -117,6 +128,31 @@ def walk_forward_backtest(
         if test_data.empty:
             continue
 
+        # Apply dynamic stock selection if provided
+        if stock_selector_fn is not None:
+            pool = stock_selector_fn(data)
+            test_dates_set = set(test_data["date"].unique())
+            pool_filtered = {
+                d: codes
+                for d, codes in pool.items()
+                if d in test_dates_set
+            }
+            mask = pd.Series(False, index=test_data.index)
+            for d, allowed in pool_filtered.items():
+                mask = mask | (
+                    (test_data["date"] == d) & (test_data["code"].isin(allowed))
+                )
+            test_data = test_data[mask].copy()
+            if test_data.empty:
+                results.append({
+                    "period": i, "train_start": train_start,
+                    "train_end": train_end, "test_start": test_start,
+                    "test_end": test_end, "total_return": 0.0,
+                    "annual_return": 0.0, "sharpe_ratio": 0.0,
+                    "max_drawdown": 0.0, "win_rate": 0.0, "trade_count": 0,
+                })
+                continue
+
         # Generate signals (signal_fn can re-estimate params on train_data)
         signals = signal_fn(train_data, test_data)
 
@@ -142,6 +178,13 @@ def walk_forward_backtest(
         # Allocate positions
         prices = test_data[["date", "code", "close"]].drop_duplicates()
         positions = equal_weight(signals, prices, capital=capital, exposure=exposure)
+
+        # Apply industry cap if mapping provided
+        if industry_map is not None:
+            from src.portfolio.industry_cap import apply_industry_cap
+            positions = apply_industry_cap(
+                positions, industry_map, max_industry_weight
+            )
 
         # Apply position limit
         from src.risk.position_limit import apply_position_limit
