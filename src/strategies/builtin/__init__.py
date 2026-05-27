@@ -6,6 +6,7 @@ import src.strategies.builtin.market_regime  # noqa: F401
 import src.strategies.builtin.mean_reversion  # noqa: F401
 import src.strategies.builtin.momentum_breakout  # noqa: F401
 import src.strategies.builtin.momentum_trend  # noqa: F401
+import src.strategies.builtin.multi_category  # noqa: F401
 import src.strategies.builtin.multifactor  # noqa: F401
 import src.strategies.builtin.pair_trading  # noqa: F401
 import src.strategies.builtin.rsi_reversal  # noqa: F401

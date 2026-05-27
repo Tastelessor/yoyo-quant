@@ -23,6 +23,64 @@ def _get_current_prices(
     return merged["close"]
 
 
+def _ensure_avg_cost(
+    positions: pd.DataFrame, market_data: pd.DataFrame,
+) -> pd.DataFrame:
+    """Add avg_cost column if missing, tracking actual position entries.
+
+    A position is "new" when a code appears with shares > 0 on a date
+    where it had shares = 0 (or didn't exist) on the previous date.
+    The entry price is the close on that transition date.
+    """
+    if "avg_cost" in positions.columns:
+        return positions
+
+    if positions.empty:
+        positions = positions.copy()
+        positions["avg_cost"] = pd.Series(dtype=float)
+        return positions
+
+    positions = positions.copy()
+    price_map = market_data.set_index(["date", "code"])["close"]
+    all_dates = sorted(positions["date"].unique())
+
+    # Track which codes were held on the previous date
+    prev_held: set[str] = set()
+    entry_prices: dict[str, float] = {}  # code -> entry price
+
+    for date in all_dates:
+        day_pos = positions[positions["date"] == date]
+        # Codes with actual shares > 0 today
+        held_today = set(
+            day_pos.loc[day_pos["shares"] > 0, "code"].tolist()
+        )
+
+        # New entries: held today but not yesterday
+        new_entries = held_today - prev_held
+        for code in new_entries:
+            key = (date, code)
+            if key in price_map.index:
+                entry_prices[code] = price_map[key]
+
+        prev_held = held_today
+
+    positions["avg_cost"] = positions["code"].map(entry_prices)
+
+    # Fallback for any unmapped codes
+    missing = positions["avg_cost"].isna()
+    if missing.any():
+        first_prices = (
+            market_data.sort_values("date")
+            .groupby("code")["close"]
+            .first()
+        )
+        positions.loc[missing, "avg_cost"] = (
+            positions.loc[missing, "code"].map(first_prices)
+        )
+
+    return positions
+
+
 class FixedStopLossRule(Rule):
     """Stop loss at a fixed percentage below average cost.
 
@@ -40,9 +98,10 @@ class FixedStopLossRule(Rule):
         self.threshold = threshold
 
     def apply(self, ctx: RuleContext) -> RuleContext:
-        if ctx.positions.empty or "avg_cost" not in ctx.positions.columns:
+        if ctx.positions.empty:
             return ctx
 
+        ctx.positions = _ensure_avg_cost(ctx.positions, ctx.market_data)
         ctx.positions = ctx.positions.copy()
         prices = _get_current_prices(ctx.positions, ctx.market_data)
         avg_cost = ctx.positions["avg_cost"]
@@ -81,9 +140,10 @@ class ATRStopLossRule(Rule):
         self.atr_window = atr_window
 
     def apply(self, ctx: RuleContext) -> RuleContext:
-        if ctx.positions.empty or "avg_cost" not in ctx.positions.columns:
+        if ctx.positions.empty:
             return ctx
 
+        ctx.positions = _ensure_avg_cost(ctx.positions, ctx.market_data)
         ctx.positions = ctx.positions.copy()
         stopped_codes = []
         for idx, row in ctx.positions.iterrows():
@@ -116,5 +176,42 @@ class ATRStopLossRule(Rule):
 
         if stopped_codes:
             ctx.metadata["stopped_out"] = stopped_codes
+
+        return ctx
+
+
+class FixedTakeProfitRule(Rule):
+    """Take profit at a fixed percentage above average cost.
+
+    Parameters
+    ----------
+    threshold : float
+        Profit fraction that triggers take-profit (e.g. 0.05 for 5%).
+        Must be positive.
+    """
+
+    name = "fixed_take_profit"
+    priority = 122
+
+    def __init__(self, threshold: float = 0.05):
+        self.threshold = threshold
+
+    def apply(self, ctx: RuleContext) -> RuleContext:
+        if ctx.positions.empty:
+            return ctx
+
+        ctx.positions = _ensure_avg_cost(ctx.positions, ctx.market_data)
+        ctx.positions = ctx.positions.copy()
+        prices = _get_current_prices(ctx.positions, ctx.market_data)
+        avg_cost = ctx.positions["avg_cost"]
+        pnl_pct = (prices - avg_cost) / avg_cost
+
+        taken = pnl_pct > self.threshold
+        if taken.any():
+            ctx.positions.loc[taken, "weight"] = 0.0
+            ctx.positions.loc[taken, "shares"] = 0
+            ctx.metadata["taken_profit"] = (
+                ctx.positions.loc[taken, "code"].tolist()
+            )
 
         return ctx

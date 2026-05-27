@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pandas as pd
 import pytest
 
@@ -6,7 +8,6 @@ from src.data.universe import (
     resolve_universe,
     resolve_universe_groups,
 )
-
 
 # --- resolve_universe: codes ---
 
@@ -88,9 +89,15 @@ def test_no_filters_section():
 @pytest.fixture
 def sample_data():
     """3只股票各5天的合成行情数据。"""
-    dates = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05", "2024-01-08"])
+    dates = pd.to_datetime(
+        ["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05", "2024-01-08"]
+    )
     rows = []
-    for code, vol_base in [("000001", 10_000_000), ("600519", 2_000_000), ("000858", 300_000)]:
+    for code, vol_base in [
+        ("000001", 10_000_000),
+        ("600519", 2_000_000),
+        ("000858", 300_000),
+    ]:
         for i, d in enumerate(dates):
             rows.append(
                 {
@@ -120,7 +127,8 @@ def test_filter_min_avg_turnover(sample_data):
     """低于成交额阈值的股票应被移除。"""
     cfg = {"filters": {"min_avg_turnover": 50_000_000}}
     codes = ["000001", "600519", "000858"]
-    # volume * close = turnover; 000001: ~10M*10=100M, 600519: ~2M*10=20M, 000858: ~300K*10=3M
+    # volume * close = turnover
+    # 000001: ~10M*10=100M, 600519: ~2M*10=20M, 000858: ~300K*10=3M
     result = apply_data_filters(codes, sample_data, cfg.get("filters", {}))
     assert "000001" in result
     assert "600519" not in result
@@ -146,7 +154,9 @@ def test_filter_empty_data():
     """空数据应返回全部代码（无法过滤）。"""
     cfg = {"filters": {"min_avg_volume": 5_000_000}}
     codes = ["000001", "600519"]
-    empty_data = pd.DataFrame(columns=["date", "code", "open", "high", "low", "close", "volume"])
+    empty_data = pd.DataFrame(
+        columns=["date", "code", "open", "high", "low", "close", "volume"]
+    )
     result = apply_data_filters(codes, empty_data, cfg.get("filters", {}))
     assert result == ["000001", "600519"]
 
@@ -206,3 +216,69 @@ def test_resolve_groups_single_group():
     }
     result = resolve_universe_groups(cfg)
     assert result == {"消费": ["600519", "000858", "000568"]}
+
+
+# --- resolve_universe: source=index ---
+
+
+def test_resolve_universe_from_index_source():
+    """source=index 应从 fetch_index_constituents 获取代码。"""
+    cfg = {
+        "source": "index",
+        "index_code": "000905.SH",
+        "fetch_date": "2026-05-23",
+    }
+    with patch(
+        "src.data.fetcher.fetch_index_constituents", return_value=["000001", "600519"]
+    ):
+        result = resolve_universe(cfg)
+    assert result == ["000001", "600519"]
+
+
+def test_resolve_universe_index_source_with_st_filter():
+    """source=index 应正确过滤 ST 股票。"""
+    cfg = {
+        "source": "index",
+        "index_code": "000905.SH",
+        "fetch_date": "2026-05-23",
+        "filters": {"exclude_st": True},
+    }
+    with patch(
+        "src.data.fetcher.fetch_index_constituents", return_value=["000001", "000858"]
+    ):
+        result = resolve_universe(cfg, st_codes=["000858"])
+    assert result == ["000001"]
+
+
+def test_resolve_universe_index_source_passes_params():
+    """source=index 应正确传递 index_code 和 date 参数。"""
+    cfg = {
+        "source": "index",
+        "index_code": "000905.SH",
+        "fetch_date": "2026-05-23",
+    }
+    with patch("src.data.fetcher.fetch_index_constituents", return_value=[]) as mock:
+        resolve_universe(cfg)
+    mock.assert_called_once_with("000905.SH", date="2026-05-23")
+
+
+def test_resolve_universe_static_codes_still_works():
+    """静态 codes 列表应保持原有行为。"""
+    cfg = {"codes": ["000001", "600519", "000858"]}
+    result = resolve_universe(cfg)
+    assert result == ["000001", "600519", "000858"]
+
+
+def test_resolve_universe_index_source_deduplicates():
+    """source=index 返回重复代码时应去重。"""
+    cfg = {
+        "source": "index",
+        "index_code": "000905.SH",
+        "fetch_date": "2026-05-23",
+    }
+    with patch(
+        "src.data.fetcher.fetch_index_constituents",
+        return_value=["000001", "000001", "600519"],
+    ):
+        result = resolve_universe(cfg)
+    assert result == ["000001", "600519"]

@@ -19,6 +19,9 @@ def resolve_universe(
     cfg : dict
         universe 配置段，支持的字段：
         - codes: list[str]，手动指定的代码列表
+        - source: "index"，从 tushare 获取指数成分股
+        - index_code: str，指数代码（如 "000905.SH"）
+        - fetch_date: str，成分股快照日期
         - filters.exclude_st: bool，是否排除 ST 股票
     st_codes : list[str] | None
         当前 ST 股票代码列表。exclude_st 为 True 时必须提供。
@@ -28,7 +31,16 @@ def resolve_universe(
     list[str]
         去重后的股票代码列表，保持首次出现的顺序。
     """
-    codes = list(cfg.get("codes") or [])
+    source = cfg.get("source")
+
+    if source == "index":
+        from src.data.fetcher import fetch_index_constituents
+
+        index_code = cfg.get("index_code", "000905.SH")
+        fetch_date = cfg.get("fetch_date")
+        codes = fetch_index_constituents(index_code, date=fetch_date)
+    else:
+        codes = list(cfg.get("codes") or [])
 
     filters = cfg.get("filters") or {}
     if filters.get("exclude_st") and st_codes is not None:
@@ -84,7 +96,9 @@ def apply_data_filters(
     min_turnover = filters.get("min_avg_turnover")
     if min_turnover is not None:
         avg_turnover = (data["volume"] * data["close"]).groupby(data["code"]).mean()
-        result = [c for c in result if c in avg_turnover and avg_turnover[c] >= min_turnover]
+        result = [
+            c for c in result if c in avg_turnover and avg_turnover[c] >= min_turnover
+        ]
 
     return result
 

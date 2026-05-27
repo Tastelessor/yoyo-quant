@@ -13,12 +13,28 @@ class BacktestEngine:
     executes buy/sell at close price, tracks cash + holdings,
     and computes equity curve + metrics.
 
+    Parameters
+    ----------
+    capital : float
+        Initial cash.
+    stop_loss : float | None
+        Stop-loss threshold (e.g. -0.15 for -15%). None to disable.
+    take_profit : float | None
+        Take-profit threshold (e.g. 0.05 for +5%). None to disable.
+
     Data flow: signals -> portfolio -> risk -> BacktestEngine -> visualization
     """
 
-    def __init__(self, capital: float = 1_000_000):
+    def __init__(
+        self,
+        capital: float = 1_000_000,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+    ):
         self.initial_capital = capital
         self.cash = capital
+        self.stop_loss = stop_loss
+        self.take_profit = take_profit
 
     def run(
         self,
@@ -66,6 +82,34 @@ class BacktestEngine:
                 for code, shares in zip(day_pos["code"], day_pos["shares"])
                 if shares > 0
             }
+
+            # Stop-loss / take-profit on existing holdings
+            if self.stop_loss is not None or self.take_profit is not None:
+                for code in list(holdings):
+                    price = day_prices.get(code)
+                    if price is None or (isinstance(price, float) and np.isnan(price)):
+                        continue
+                    ep = entry_prices.get(code, price)
+                    pnl_pct = (price - ep) / ep if ep > 0 else 0.0
+
+                    triggered = False
+                    reason = ""
+                    if self.stop_loss is not None and pnl_pct < self.stop_loss:
+                        triggered = True
+                        reason = "stop_loss"
+                    elif self.take_profit is not None and pnl_pct > self.take_profit:
+                        triggered = True
+                        reason = "take_profit"
+
+                    if triggered:
+                        shares = holdings.pop(code)
+                        self.cash += shares * price
+                        entry_prices.pop(code)
+                        pnl = shares * (price - ep)
+                        trades.append({
+                            "date": date, "code": code, "action": reason,
+                            "price": price, "shares": shares, "pnl": pnl,
+                        })
 
             # Sell positions not in target
             for code in list(holdings):

@@ -12,7 +12,9 @@
 | data fetcher | ✅ 完成 | fetcher.py + 7 tests |
 | data storage | ✅ 完成 | storage.py + 5 tests |
 | data filters | ✅ 完成 | 涨跌停/停牌/T+1 过滤 + 5 tests |
-| data (股票池) | ✅ 完成 | universe.py + resolve_universe/apply_data_filters + 19 tests |
+| data (股票池) | ✅ 完成 | universe.py + resolve_universe/apply_data_filters + 24 tests |
+| data (指数成分股) | ✅ 完成 | fetcher.py: fetch_index_constituents + fetch_daily_batch + 18 tests |
+| data (CSI 500 配置) | ✅ 完成 | csi500.yaml: source=index 动态获取 + 管道测试 4 tests |
 | factors (HV) | ✅ 完成 | volatility.py + 6 tests |
 | factors (量价) | ✅ 完成 | RSI/OBV/成交量比率/ATR + 24 tests |
 | factors (协整) | ✅ 完成 | cointegration.py + 22 tests |
@@ -58,7 +60,7 @@
 | context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
 | execution | 🔲 未开始 | 统一下单接口 |
 
-**测试总计**：551 tests（40 个测试文件）
+**测试总计**：597 tests（43 个测试文件）
 
 ## 目录结构
 
@@ -171,12 +173,27 @@ configs/
 |---|------|------|---------|------|
 | A | **多类别因子组合** | 信号层 | 大 | 6 个类别加权组合（momentum+mean_rev+vol_price+volatility+vwap+trend），而非只用 mean_reversion。多个低相关 alpha 源叠加可把 Sharpe 从 0.56 推到 0.7+ |
 | B | **行业感知分配** | 组合层 | 中 | 不同行业最优策略不同（科技 momentum Sharpe 0.61 vs 消费 VWAP 0.49）。行业×策略路由的分化 > regime×策略路由 |
-| C | **扩大股票池到中盘** | 数据层 | 中 | 加入 CSI 500 中盘股。小市值定价效率低 → alpha 空间更大。需要解决流动性和数据覆盖问题 |
+| ~~C~~ | ~~扩大股票池到中盘~~ | ~~数据层~~ | ~~中~~ | **已验证无效**。CSI 500 平均 Sharpe 0.23 vs CSI 300 的 0.44，所有策略在中盘股上表现更差（详见下方） |
 | D | Execution 模块 | 基础层 | — | 统一下单接口。不做能赚钱，但管道不完整 |
+
+### Direction C 验证结果（2026-05-27）
+
+CSI 300 vs CSI 500 回测（2023-01 ~ 2026-05，5 策略）：
+
+| Strategy | CSI300 Sharpe | CSI500 Sharpe | Delta |
+|----------|---------------|---------------|-------|
+| reversed_gtja_vwap | 0.606 | 0.106 | **-0.500** |
+| gtja_momentum | 0.485 | 0.246 | **-0.239** |
+| gtja_volatility | 0.427 | 0.047 | **-0.380** |
+| gtja_volume_price | 0.352 | 0.369 | +0.017 |
+| gtja_vwap | 0.336 | 0.382 | +0.046 |
+| **平均** | **0.441** | **0.230** | **-0.211** |
+
+结论：CSI 300 全面碾压 CSI 500。中盘股噪声更大、趋势持续性差、流动性低（CSI 500 均量仅为 CSI 300 的 48%）。2023-2026 是大盘股驱动的行情，中盘扩展不提供 alpha 增量。
 
 ### 执行建议
 
-**先 A → 验证 → 再 B**
+**先 A → 验证 → 再 B**（C 已排除）
 
 A 是最大的增量来源，且改动最小（用一个 MultiCategoryStrategy 包装 6 个类别，weighted vote 输出信号）。验证后如果 Sharpe 过 0.7，再做 B 进一步优化分配。
 - **Coverage**：因子值是否可计算？

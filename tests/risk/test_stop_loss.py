@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from src.risk.rules import RuleContext
-from src.risk.stop_loss import ATRStopLossRule, FixedStopLossRule
+from src.risk.stop_loss import ATRStopLossRule, FixedStopLossRule, FixedTakeProfitRule
 
 
 # --- Fixtures ---
@@ -281,5 +281,116 @@ class TestATRStopLossRule:
             signals=signals, positions=positions, market_data=market_data
         )
         rule = ATRStopLossRule()
+        result = rule.apply(ctx)
+        assert len(result.positions) == 0
+
+
+# --- FixedTakeProfitRule ---
+
+
+class TestFixedTakeProfitRule:
+    def test_name_and_priority(self):
+        rule = FixedTakeProfitRule()
+        assert rule.name == "fixed_take_profit"
+        assert rule.priority == 122
+
+    def test_trigger_when_profit_exceeds_threshold(self, signals, market_data):
+        """000001: avg_cost=8.0, current=8.5 → +6.25% profit → triggers +5% take-profit."""
+        positions = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2024-01-05"]),
+                "code": ["000001"],
+                "weight": [1.0],
+                "shares": [1000],
+                "avg_cost": [8.0],
+            }
+        )
+        ctx = RuleContext(
+            signals=signals, positions=positions, market_data=market_data
+        )
+        rule = FixedTakeProfitRule(threshold=0.05)
+        result = rule.apply(ctx)
+        assert result.positions["weight"].iloc[0] == 0.0
+        assert result.positions["shares"].iloc[0] == 0
+
+    def test_no_trigger_when_profit_below_threshold(self, signals, market_data):
+        """600519: avg_cost=480, current=470 → -2% → no trigger."""
+        positions = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2024-01-05"]),
+                "code": ["600519"],
+                "weight": [1.0],
+                "shares": [100],
+                "avg_cost": [480.0],
+            }
+        )
+        ctx = RuleContext(
+            signals=signals, positions=positions, market_data=market_data
+        )
+        rule = FixedTakeProfitRule(threshold=0.05)
+        result = rule.apply(ctx)
+        assert result.positions["weight"].iloc[0] == 1.0
+
+    def test_no_trigger_when_loss(self, signals, market_data):
+        """Losing position should NOT trigger take-profit."""
+        positions = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2024-01-05"]),
+                "code": ["000001"],
+                "weight": [1.0],
+                "shares": [5000],
+                "avg_cost": [10.0],  # bought at 10, current 8.5 → -15% loss
+            }
+        )
+        ctx = RuleContext(
+            signals=signals, positions=positions, market_data=market_data
+        )
+        rule = FixedTakeProfitRule(threshold=0.05)
+        result = rule.apply(ctx)
+        assert result.positions["weight"].iloc[0] == 1.0
+
+    def test_metadata_records_taken_profit(self, signals, market_data):
+        positions = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2024-01-05"]),
+                "code": ["000001"],
+                "weight": [1.0],
+                "shares": [1000],
+                "avg_cost": [8.0],
+            }
+        )
+        ctx = RuleContext(
+            signals=signals, positions=positions, market_data=market_data
+        )
+        rule = FixedTakeProfitRule(threshold=0.05)
+        result = rule.apply(ctx)
+        assert "taken_profit" in result.metadata
+        assert "000001" in result.metadata["taken_profit"]
+
+    def test_returns_rule_context(self, signals, market_data):
+        positions = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2024-01-05"]),
+                "code": ["000001"],
+                "weight": [1.0],
+                "shares": [1000],
+                "avg_cost": [8.0],
+            }
+        )
+        ctx = RuleContext(
+            signals=signals, positions=positions, market_data=market_data
+        )
+        rule = FixedTakeProfitRule(threshold=0.05)
+        result = rule.apply(ctx)
+        assert isinstance(result, RuleContext)
+
+    def test_empty_positions(self, signals, market_data):
+        positions = pd.DataFrame(
+            columns=["date", "code", "weight", "shares", "avg_cost"]
+        )
+        ctx = RuleContext(
+            signals=signals, positions=positions, market_data=market_data
+        )
+        rule = FixedTakeProfitRule(threshold=0.05)
         result = rule.apply(ctx)
         assert len(result.positions) == 0

@@ -1,0 +1,70 @@
+universe:
+  source: index
+  index_code: "000905.SH"
+  fetch_date: "2026-05-23"
+  filters:
+    exclude_st: true
+  start_date: "2023-01-01"
+  end_date: "2026-05-23"
+
+stock_selector:
+  audit:
+    lookback: 60
+    lag: 5
+    min_coverage: 0.8
+    min_stability: 0.3
+    min_dispersion: 0.10
+  factors:
+    - calc_money_flow_6d
+    - calc_up_down_vol_ratio_26d
+    - calc_obv_6d
+    - calc_momentum_20d_return
+    - calc_return_1d_times_vol
+  lookback: 60
+  lag: 5
+  min_coverage: 0.8
+  min_stability: 0.3
+  min_dispersion: 0.10
+  min_stocks: 5
+  top_n: null
+
+portfolio:
+  allocator: equal_weight
+  capital: 1_000_000
+
+strategies:
+  regime_switch:
+    regimes:
+      trend_up:
+        name: gtja_momentum
+        params: { rebalance: 10, top_n: 5, bottom_n: 3 }
+      trend_down:
+        name: reversed_gtja_vwap
+        params: { rebalance: 20, top_n: 3, bottom_n: 5 }
+      range:
+        name: reversed_gtja_vwap
+        params: { rebalance: 20, top_n: 5, bottom_n: 3 }
+      volatile:
+        name: gtja_volatility
+        params: { rebalance: 5, top_n: 3, bottom_n: 3 }
+  combiner:
+    type: weighted_vote
+    threshold: 0.0
+  rules:
+    - name: mean_reversion
+      params: { window: 20, num_std: 2.0 }
+      weight: 0.5
+    - name: rsi_reversal
+      params: { window: 14, oversold: 30, overbought: 70 }
+      weight: 0.5
+
+risk:
+  rules:
+    - name: fixed_stop_loss
+      params: { threshold: -0.15 }
+    - name: fixed_take_profit
+      params: { threshold: 0.05 }
+    - name: position_limit
+      params: { max_weight: 0.3 }
+    - name: tradability
+    - name: t1
