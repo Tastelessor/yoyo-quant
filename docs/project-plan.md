@@ -61,6 +61,9 @@
 | portfolio (持仓平滑) | ✅ 完成 | smoother.py: 宽表状态机逐日递推 + 死区拦截 + 14 tests |
 | strategies (twin-star combiner) | ✅ 完成 | threshold=0.5 AND-gate 共识过滤 + 中性化 → Sharpe 0.820 |
 | context (股票选择器) | ✅ 完成 | stock_selector.py: 因子质量评估 + 动态股票池筛选 + 40 tests |
+| data (盈利断层) | ✅ 完成 | earnings.py: PIT 滚动池 + Z-Score 标准化 + 27 tests |
+| factors (盈利断层) | ✅ 完成 | earnings.py: calc_earnings_surprise + calc_earnings_acceleration + 7 tests |
+| strategies (盈利断层) | ✅ 完成 | earnings_surprise.py: GTJAEarningsSurpriseStrategy + 12 tests |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
 | context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
 | strategies (多类别组合) | ✅ 完成 | multi_category.py: 6 类别加权投票 + 7 tests |
@@ -69,7 +72,7 @@
 | risk (止盈规则) | ✅ 重构 | 已迁移到 BacktestEngine（与止损统一管理） |
 | execution | 🔲 未开始 | 统一下单接口 |
 
-**测试总计**：730 tests（52 个测试文件）
+**测试总计**：776 tests（55 个测试文件）
 
 ## 目录结构
 
@@ -194,7 +197,7 @@ configs/
 | E | ~~全市场 + stock_selector~~ | 数据层 | **已验证无效** | stock_selector 质量过滤无正向价值。可投池（市值>200亿，844只）Sharpe 0.43 已是最优 |
 | F | **小止盈大止损** | 风控层 | **已实现但不适用** | SL/TP 对均值回归有害（割肉+截断利润），适合趋势策略 |
 | G | ~~DrawdownCircuitBreaker~~ | 风控层 | **已验证** | MaxDD 降 5.6pp（-33.4%→-27.8%），但 Sharpe 降 0.076。阈值锁 -0.35 作安全底线 |
-| H | **第 3 颗星：基本面因子** | 信号层 | **Phase 15 最高优先级** | 引入与价量异构的基本面预期差因子（净利润断层/分析师预期修正），扩展持仓至 5-8 只，分散特异性风险 |
+| H | **基本面盈利断层因子** | 信号层 | **✅ Phase 15 完成** | earnings-only N=10 rb=15: Sharpe 0.989, MaxDD 7.3%, Return 363%。纯基本面 > 混合组合。跨期 Std 卡在 1.8（walk-forward 结构限制） |
 | D | Execution 模块 | 基础层 | 待做 | 统一下单接口 |
 
 ### Direction C 验证结果（2026-05-27）

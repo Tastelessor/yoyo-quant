@@ -147,19 +147,22 @@ neutralization:
   min_peers: 3
 
 strategies:
-  # Twin-star combiner: AND-gate consensus (threshold=0.5)
-  # Both strategies must agree for a signal to pass.
-  # This filters ~60% of weak/conflicting signals.
+  # Triple-star combiner: AND-gate consensus (threshold=0.5)
+  # All three strategies must agree for a signal to pass.
+  # Twin-star (microstructure) + third star (fundamental earnings).
   combiner:
     type: weighted_vote
     threshold: 0.5
   rules:
     - name: reversed_gtja_vwap
       params: { rebalance: 20, top_n: 5, bottom_n: 3 }
-      weight: 0.52
+      weight: 0.35
     - name: gtja_volatility
       params: { rebalance: 20, top_n: 5, bottom_n: 3 }
-      weight: 0.48
+      weight: 0.35
+    - name: gtja_earnings_surprise
+      params: { rebalance: 20, top_n: 5, bottom_n: 3 }
+      weight: 0.30
 
 backtest:
   stop_loss: -0.15

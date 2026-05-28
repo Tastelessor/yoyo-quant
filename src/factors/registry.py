@@ -114,5 +114,10 @@ def _register_defaults() -> None:
         register_factor(primary_name, func, tags=["volume_price", "gtja"])
         register_factor(alias, func, tags=["volume_price", "gtja"])
 
+    from src.factors.earnings import calc_earnings_acceleration, calc_earnings_surprise
+
+    register_factor("calc_earnings_surprise", calc_earnings_surprise, tags=["fundamental", "earnings"])
+    register_factor("calc_earnings_acceleration", calc_earnings_acceleration, tags=["fundamental", "earnings"])
+
 
 _register_defaults()

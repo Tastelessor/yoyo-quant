@@ -5,6 +5,7 @@ from src.factors.cointegration import (
     calc_spread_zscore,
     kalman_filter_hedge_ratio,
 )
+from src.factors.earnings import calc_earnings_acceleration, calc_earnings_surprise
 from src.factors.momentum import (
     calc_momentum_5d_change,
     calc_momentum_5d_ratio,
@@ -25,6 +26,8 @@ from src.factors.volume_price import calc_atr, calc_obv, calc_rsi, calc_volume_r
 __all__ = [
     "calc_atr",
     "calc_coint_pvalue",
+    "calc_earnings_acceleration",
+    "calc_earnings_surprise",
     "calc_factors",
     "calc_half_life",
     "calc_hv",

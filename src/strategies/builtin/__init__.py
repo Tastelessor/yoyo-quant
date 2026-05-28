@@ -1,5 +1,6 @@
 """Built-in strategy implementations."""
 
+import src.strategies.builtin.earnings_surprise  # noqa: F401
 import src.strategies.builtin.gtja_mean_reversion  # noqa: F401
 import src.strategies.builtin.gtja_momentum  # noqa: F401
 import src.strategies.builtin.market_regime  # noqa: F401

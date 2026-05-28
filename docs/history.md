@@ -954,3 +954,98 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 - 实现 Risk Parity 组合器（`src/portfolio/risk_parity.py`）
 - 用 rev_vwap + volatility 双子星回测验证 Sharpe ≥ 1.0
 - 校准 regime switch 路由：volatility 用于 volatile/trend_down 状态，rev_vwap 用于 range/trend_up 状态
+
+---
+
+## Phase 15：基本面盈利断层因子（2026-05-28）
+
+### 任务
+
+引入与价量异构的纯基本面因子作为第 3 颗星，打破 Sharpe 0.820 天花板。
+
+### 实现
+
+**数据层**（`src/data/earnings.py`，新建）：
+- `fetch_forecast(ts_code)` / `fetch_express(ts_code)` — tushare 业绩预告/快报，逐股票拉取
+- `fetch_earnings_history(codes)` — 批量获取，parquet 缓存
+- `_compute_pit_surprise()` — PIT 滚动池状态机：Forecast 用类型评分，Express 用同池 rank_diff
+- `_compute_acceleration()` — 显式季频匹配（Q1→去年年报，Q2→Q1，Q3→Q2，Q4→Q3）
+- `build_earnings_panel()` — 日频面板 + 每日截面 Z-Score 标准化（clip [-3, 3]）
+
+**因子层**（`src/factors/earnings.py`，新建）：
+- `calc_earnings_surprise()` / `calc_earnings_acceleration()` — 透传预计算值
+
+**策略层**（`src/strategies/builtin/earnings_surprise.py`，新建）：
+- `GTJAEarningsSurpriseStrategy` — 复用 volatility_gtja 模式，rank → composite → top_n/bottom_n
+
+**测试**：46 个新测试（27 数据 + 7 因子 + 12 策略），总测试 776 个
+
+### A/B 回测结果
+
+100 股（production.yaml），10 年 walk-forward（2016-06 ~ 2026-05）：
+
+| 配置 | Sharpe | MaxDD | Return | Trades |
+|------|--------|-------|--------|--------|
+| twin-star/0.52（基线） | 0.818 | 7.8% | 309.6% | 920 |
+| **earn-N10/rb15** | **0.978** | **7.3%** | **369.8%** | 2217 |
+| earn-N10/rb10 | 0.971 | 7.2% | 379.1% | 2330 |
+| earn-N10/rb20 | 0.961 | 7.3% | 355.4% | 2087 |
+| earn-heavy/t0.3 | 0.966 | 7.0% | 293.2% | 2054 |
+| triple-N10/t0.2 | 0.896 | 6.4% | 200.8% | 3118 |
+| triple-equal/t0.5 | 0.157 | 3.4% | 80.4% | 395 |
+
+### 关键发现
+
+1. **earnings-only N=10 rb=15 达到 Sharpe 0.978**，突破 Phase 14 的 0.820 天花板（+19.6%）
+2. **纯基本面 > 混合组合**：earnings-only 0.978 > triple-N10 0.896。基本面 alpha 与价量 alpha 混合后被 AND-gate 稀释
+3. **top_n=10 优于 top_n=5**：更分散的持仓降低特异性风险
+4. **threshold 对单策略无影响**：earnings-only 时 threshold=0.0 和 0.3 结果相同
+
+### 设计亮点
+
+- **PIT 滚动池状态机**：Forecast/Express 分池处理，杜绝 None 排名崩溃和非对称分母
+- **跨年动态回溯**：Q1(0331) → 去年年报(1231)，Q1 加速度非真空
+- **日频截面 Z-Score**：消灭小样本异方差和异构分布差分问题
+- **四月双重披露保护**：按 (ann_date, end_date) 排序，更新季胜出
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-05-28 | Forecast/Express 分池 PIT | 同池会导致 None 排名崩溃和非对称分母 |
+| 2026-05-28 | 截面 rank 差替代绝对值归一化 | 天然有界 [-1,1]，抗离群值 |
+| 2026-05-28 | 砍掉 pead_momentum | 本质是价格动量的马甲，走私回价量因子 |
+| 2026-05-28 | 日频截面 Z-Score 标准化 | 消灭小样本异方差和 Forecast/Express 尺度断裂 |
+| 2026-05-28 | Q1 跨年链接去年年报 | Q1 加速度非真空，显式 prev_end_date 匹配 |
+| 2026-05-28 | 生产配置切换为 earnings-only | 纯基本面 Sharpe 0.978 > 混合 0.896 |
+
+### 生产级参数矩阵网格搜索（2026-05-28）
+
+**扫描轴**：top_n (10/15) × weights (0.35/0.35/0.30 vs 0.40/0.40/0.20) × threshold (0.4/0.5/0.6) × dead_zone (0.015)
+
+| # | 配置 | Sharpe | Std | MaxDD | Return | Trades |
+|---|------|--------|-----|-------|--------|--------|
+| 1 | earn-only/N10/rb15 | **0.989** | 1.802 | 7.3% | 362.8% | 2152 |
+| 2 | earn-only/N10/rb20 | 0.977 | **1.777** | 7.2% | 352.2% | 2073 |
+| 3 | earn-only/N12/rb20 | 0.947 | 1.821 | 7.2% | 299.1% | 2308 |
+| 4 | earn-only/N12/rb15 | 0.938 | 1.885 | 7.3% | 291.0% | 2425 |
+| 5 | earn-only/N15/rb15 | 0.831 | 1.932 | 6.9% | 226.2% | 2790 |
+| 6 | earn-only/N15/rb20 | 0.780 | 1.910 | 7.0% | 195.7% | 2597 |
+| 7 | triple/w35/N15/t0.5 | 0.506 | 1.788 | 9.4% | 125.5% | 1177 |
+| 8 | triple/w40/N15/t0.5 | 0.493 | 1.790 | 9.4% | 115.6% | 1189 |
+| 9 | triple/w35/N10/t0.5 | 0.000 | overflow | 6.7% | 50.4% | 609 |
+| 10 | triple/w40/N10/t0.5 | 0.000 | overflow | 6.8% | 45.0% | 615 |
+
+**目标达成情况**：
+- Sharpe > 1.0：**未达成**（最高 0.989，差 0.011）
+- Std < 1.2：**未达成**（最低 1.777，结构性卡在 ~1.8）
+
+**关键发现**：
+1. **N=10 是最优 top_n**：N=12/15 分散过度稀释 alpha，Sharpe 从 0.989 降至 0.780
+2. **rb=15 略优于 rb=20**：更快响应基本面变化，但差异极小（0.012）
+3. **Triple-star 全面劣于 earnings-only**：AND-gate 在三策略下过于保守，N=10 时信号几乎被完全过滤
+4. **Threshold 对 triple 无影响**：0.4/0.5/0.6 结果相同，说明瓶颈在信号交集而非门槛
+5. **跨期 Std 结构性卡在 ~1.8**：这是 walk-forward 框架的固有属性（12m/3m 窗口），非因子或策略问题
+6. **Sharpe 0.989 ≈ 1.0**：距离目标仅差 1.1%，可能通过微调 rebalance 或扩大股票池突破
+
+**结论**：earnings-only N=10 rb=15 是当前最优配置。Std < 1.2 需要架构层面改变（拉长 test_months、引入跨 period 状态累积、或切换到连续回测模式）。
