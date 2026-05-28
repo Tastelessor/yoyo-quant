@@ -12,6 +12,7 @@ from src.factors.momentum import (
     calc_momentum_20d_change,
     calc_momentum_20d_return,
 )
+from src.factors.neutralize import demean_by_industry, neutralize_factors
 from src.factors.registry import (
     calc_factors,
     get_factor,
@@ -37,8 +38,10 @@ __all__ = [
     "calc_spread",
     "calc_spread_zscore",
     "calc_volume_ratio",
+    "demean_by_industry",
     "get_factor",
     "kalman_filter_hedge_ratio",
     "list_factors",
+    "neutralize_factors",
     "register_factor",
 ]

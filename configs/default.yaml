@@ -204,6 +204,10 @@ strategies:
       params: { window: 14, oversold: 30, overbought: 70 }
       weight: 0.5
 
+neutralization:
+  enabled: false          # set to true to enable factor-level industry neutralization
+  min_peers: 3            # industries with fewer stocks are merged into __unknown__
+
 backtest:
   stop_loss: -0.15
   take_profit: 0.05

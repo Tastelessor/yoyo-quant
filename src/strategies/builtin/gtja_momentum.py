@@ -48,11 +48,15 @@ class GTJAMomentumStrategy(Strategy):
         top_n: int = 5,
         bottom_n: int = 3,
         weights: dict | None = None,
+        industry_map: dict[str, str] | None = None,
+        min_peers: int = 3,
     ):
         self.rebalance = rebalance
         self.top_n = top_n
         self.bottom_n = bottom_n
         self.weights = weights or DEFAULT_WEIGHTS
+        self.industry_map = industry_map
+        self.min_peers = min_peers
 
     def generate_signal(self, data, factors=None):
         return gtja_momentum_signal(
@@ -62,6 +66,8 @@ class GTJAMomentumStrategy(Strategy):
             bottom_n=self.bottom_n,
             weights=self.weights,
             factors=factors,
+            industry_map=self.industry_map,
+            min_peers=self.min_peers,
         )
 
 
@@ -77,6 +83,8 @@ def gtja_momentum_signal(
     bottom_n: int = 3,
     weights: dict | None = None,
     factors: pd.DataFrame | None = None,
+    industry_map: dict[str, str] | None = None,
+    min_peers: int = 3,
 ) -> pd.DataFrame:
     """GTJA momentum signal.
 
@@ -121,6 +129,14 @@ def gtja_momentum_signal(
                 "gtja_88": calc_momentum_20d_return(df).values,
                 "gtja_106": calc_momentum_20d_change(df).values,
             }
+        )
+
+    # Industry neutralization: strip industry exposure before ranking
+    if industry_map is not None:
+        from src.factors.neutralize import neutralize_factors
+
+        factor_df = neutralize_factors(
+            factor_df, industry_map, FACTOR_COLS, min_peers=min_peers
         )
 
     signal = pd.Series(0, index=df.index, dtype=int)

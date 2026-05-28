@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import yaml
@@ -30,7 +31,46 @@ def load_config(path: Path) -> dict:
     return cfg
 
 
-def build_strategies(cfg: dict) -> Strategy | WeightedVoteCombiner | FilterCombiner:
+def build_industry_map(
+    cfg: dict,
+) -> tuple[dict[str, str], int] | None:
+    """Build industry map from config.
+
+    Returns ``(industry_map, min_peers)`` or ``None`` if neutralization
+    is not enabled.
+    """
+    neu_cfg = cfg.get("neutralization")
+    if not neu_cfg or not neu_cfg.get("enabled", False):
+        return None
+    from src.data.fetcher import fetch_all_stocks
+
+    stocks_df = fetch_all_stocks()
+    industry_map = dict(zip(stocks_df["code"], stocks_df["industry"]))
+    min_peers = neu_cfg.get("min_peers", 3)
+    return industry_map, min_peers
+
+
+def _inject_neutralization(
+    params: dict,
+    industry_map_cfg: tuple[dict[str, str], int] | None,
+    strategy_name: str,
+) -> None:
+    """Inject industry_map and min_peers into strategy params if supported."""
+    if industry_map_cfg is None:
+        return
+    from src.strategies.registry import _REGISTRY
+
+    im_dict, min_peers = industry_map_cfg
+    strat_cls = _REGISTRY.get(strategy_name)
+    if strat_cls and "industry_map" in inspect.signature(strat_cls.__init__).parameters:
+        params["industry_map"] = im_dict
+        params["min_peers"] = min_peers
+
+
+def build_strategies(
+    cfg: dict,
+    industry_map_cfg: tuple[dict[str, str], int] | None = None,
+) -> Strategy | WeightedVoteCombiner | FilterCombiner:
     """Build strategy or combiner from config.
 
     Config format::
@@ -49,7 +89,9 @@ def build_strategies(cfg: dict) -> Strategy | WeightedVoteCombiner | FilterCombi
 
     strategies = []
     for r in rules_cfg:
-        strat = get_strategy(r["name"], **(r.get("params") or {}))
+        params = dict(r.get("params") or {})
+        _inject_neutralization(params, industry_map_cfg, r["name"])
+        strat = get_strategy(r["name"], **params)
         weight = r.get("weight", 1.0)
         strategies.append((strat, weight))
 
@@ -102,6 +144,7 @@ def build_backtest_config(cfg: dict) -> dict:
         result["atr_stop_loss"] = bt_cfg["atr_stop_loss"]
     if "trading_cost" in bt_cfg:
         from src.backtest.engine import TradingCost
+
         result["trading_cost"] = TradingCost(**bt_cfg["trading_cost"])
     return result
 
@@ -168,7 +211,10 @@ def build_stock_selector(cfg: dict):
     return selector
 
 
-def build_regime_switch(cfg: dict):
+def build_regime_switch(
+    cfg: dict,
+    industry_map_cfg: tuple[dict[str, str], int] | None = None,
+):
     """Build RegimeSwitchStrategy from config.
 
     Config format::
@@ -209,6 +255,7 @@ def build_regime_switch(cfg: dict):
     regimes = {}
     for regime_label, strat_cfg in rs_cfg["regimes"].items():
         params = dict(strat_cfg.get("params") or {})
+        _inject_neutralization(params, industry_map_cfg, strat_cfg["name"])
         fw = strat_cfg.get("factor_weights")
 
         if fw is not None:
@@ -235,20 +282,9 @@ def build_regime_switch(cfg: dict):
 def build_combined_strategy(cfg: dict) -> dict:
     """Build combined market regime + stock strategy from config.
 
-    Handles the optional ``strategies.market_regime`` section.
-
-    Config format::
-
-        strategies:
-            market_regime:
-                ma_short: 50
-                ma_long: 200
-                exposure: { bullish: 1.0, neutral: 0.6, ... }
-            combiner:
-                type: weighted_vote
-            rules:
-                - name: multifactor
-                  params: { top_n: 5 }
+    Handles the optional ``strategies.market_regime`` section and the
+    ``strategies.regime_switch`` path (production).  When
+    ``regime_switch`` is present, it takes priority over ``rules``.
 
     Returns
     -------
@@ -256,6 +292,8 @@ def build_combined_strategy(cfg: dict) -> dict:
         ``{"regime": MarketRegime | None, "strategy": Strategy | Combiner}``
     """
     from src.strategies.builtin.market_regime import MarketRegime
+
+    industry_map_cfg = build_industry_map(cfg)
 
     strategies_cfg = cfg.get("strategies", cfg)
     regime_cfg = strategies_cfg.get("market_regime")
@@ -268,6 +306,11 @@ def build_combined_strategy(cfg: dict) -> dict:
             exposure=regime_cfg.get("exposure"),
         )
 
-    strategy = build_strategies(strategies_cfg)
+    # Try regime_switch path first (production), then rules fallback
+    rs = build_regime_switch(strategies_cfg, industry_map_cfg=industry_map_cfg)
+    if rs is not None:
+        strategy = rs
+    else:
+        strategy = build_strategies(strategies_cfg, industry_map_cfg=industry_map_cfg)
 
     return {"regime": regime, "strategy": strategy}

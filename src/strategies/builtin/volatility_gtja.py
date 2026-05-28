@@ -20,22 +20,44 @@ FACTOR_COLS = list(DEFAULT_WEIGHTS.keys())
 class GTJAVolatilityStrategy(Strategy):
     name = "gtja_volatility"
 
-    def __init__(self, rebalance: int = 20, top_n: int = 5, bottom_n: int = 3,
-                 weights: dict | None = None):
+    def __init__(
+        self,
+        rebalance: int = 20,
+        top_n: int = 5,
+        bottom_n: int = 3,
+        weights: dict | None = None,
+        industry_map: dict[str, str] | None = None,
+        min_peers: int = 3,
+    ):
         self.rebalance = rebalance
         self.top_n = top_n
         self.bottom_n = bottom_n
         self.weights = weights or DEFAULT_WEIGHTS
+        self.industry_map = industry_map
+        self.min_peers = min_peers
 
     def generate_signal(self, data, factors=None):
         return gtja_volatility_signal(
-            data, self.rebalance, self.top_n, self.bottom_n, self.weights, factors,
+            data,
+            self.rebalance,
+            self.top_n,
+            self.bottom_n,
+            self.weights,
+            factors,
+            industry_map=self.industry_map,
+            min_peers=self.min_peers,
         )
 
 
 def gtja_volatility_signal(
-    df: pd.DataFrame, rebalance: int = 20, top_n: int = 5, bottom_n: int = 3,
-    weights: dict | None = None, factors: pd.DataFrame | None = None,
+    df: pd.DataFrame,
+    rebalance: int = 20,
+    top_n: int = 5,
+    bottom_n: int = 3,
+    weights: dict | None = None,
+    factors: pd.DataFrame | None = None,
+    industry_map: dict[str, str] | None = None,
+    min_peers: int = 3,
 ) -> pd.DataFrame:
     if weights is None:
         weights = DEFAULT_WEIGHTS
@@ -48,15 +70,29 @@ def gtja_volatility_signal(
         cci = calc_cci_12d(df)
         vv = calc_volume_vol_20d(df)
         atr = calc_atr_12d(df)
-        factor_df = pd.DataFrame({
-            "date": df["date"], "code": df["code"],
-            "cci_12d": cci.values, "vol_vol_20d": vv.values, "atr_12d": atr.values,
-        })
+        factor_df = pd.DataFrame(
+            {
+                "date": df["date"],
+                "code": df["code"],
+                "cci_12d": cci.values,
+                "vol_vol_20d": vv.values,
+                "atr_12d": atr.values,
+            }
+        )
+
+    if industry_map is not None:
+        from src.factors.neutralize import neutralize_factors
+
+        factor_df = neutralize_factors(
+            factor_df, industry_map, FACTOR_COLS, min_peers=min_peers
+        )
 
     signal = pd.Series(0, index=df.index, dtype=int)
     confidence = pd.Series(0.0, index=df.index)
     min_window = 21
-    rebalance_dates = [all_dates[i] for i in range(min_window, len(all_dates), rebalance)]
+    rebalance_dates = [
+        all_dates[i] for i in range(min_window, len(all_dates), rebalance)
+    ]
 
     for rb_date in rebalance_dates:
         day_data = factor_df[factor_df["date"] == rb_date].copy()
@@ -73,7 +109,9 @@ def gtja_volatility_signal(
         day_data = day_data.sort_values("score", ascending=False)
 
         buy_codes = set(day_data.head(top_n)["code"].tolist()) if top_n > 0 else set()
-        sell_codes = set(day_data.tail(bottom_n)["code"].tolist()) if bottom_n > 0 else set()
+        sell_codes = (
+            set(day_data.tail(bottom_n)["code"].tolist()) if bottom_n > 0 else set()
+        )
 
         rb_idx = all_dates.index(rb_date)
         next_rb_idx = min(rb_idx + rebalance, len(all_dates))
@@ -101,4 +139,11 @@ def gtja_volatility_signal(
     signal[early] = 0
     confidence[early] = 0.0
 
-    return pd.DataFrame({"date": df["date"], "code": df["code"], "signal": signal, "confidence": confidence})
+    return pd.DataFrame(
+        {
+            "date": df["date"],
+            "code": df["code"],
+            "signal": signal,
+            "confidence": confidence,
+        }
+    )

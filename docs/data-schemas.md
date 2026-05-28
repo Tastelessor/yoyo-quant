@@ -121,3 +121,34 @@
 | shares | int | 成交股数 |
 | status | str | pending/filled/cancelled/rejected |
 | timestamp | datetime64 | 下单时间 |
+
+## 行业中性化 — factors.neutralize 模块
+
+> **Warning**: 当前使用 Tushare `stock_basic` 的最新行业分类快照（申万一级）。
+> 在长期回测（如 2016-2026）中，公司行业分类可能已发生变更，存在近似前视偏差。
+> 后续迭代应升级为 point-in-time 动态行业分类。
+
+行业中性化通过 `neutralize_factors()` 实现，插入在策略层因子提取之后、rank 排名之前。
+
+### neutralize_factors 输入
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| factor_df | DataFrame | 必须含 date, code, 和因子列 |
+| industry_map | dict[str, str] | code → 行业名映射 |
+| factor_cols | list[str] | 要中性化的因子列名 |
+| method | str | 中性化方法（目前仅 "demean"） |
+| min_peers | int | 行业最小标的数，不足则降级到 __unknown__ 组 |
+
+### neutralize_factors 输出
+
+与输入 `factor_df` 结构相同，`factor_cols` 列被替换为去均值后的值。
+
+### 配置
+
+```yaml
+neutralization:
+  enabled: true
+  method: demean
+  min_peers: 3
+```
