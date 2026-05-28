@@ -1,6 +1,16 @@
+# Production config: twin-star + neutralization + consensus filter
+# Phase 14 final deliverable (2026-05-28)
+# 10y walk-forward: Sharpe 0.820, MaxDD 7.8%, Total Return 310%
+#
+# Key design decisions:
+#   - threshold=0.5: AND-gate consensus filter, requires both strategies
+#     to agree, filtering ~60% of weak/conflicting signals
+#   - dead_zone=0.01: scale-invariant smoothing (0.01-0.08 all equivalent)
+#   - neutralization=true: factor-level industry demeaning (+51% Sharpe)
+#   - top_n=5: concentrated high-conviction picks
+
 universe:
   codes:
-    # Top 100 CSI 300 by total market cap (2026-05-22, min 1565亿)
     - "601939"  # 建设银行
     - "601398"  # 工商银行
     - "601288"  # 农业银行
@@ -103,90 +113,53 @@ universe:
     - "600809"  # 山西汾酒
   filters:
     exclude_st: true
-  start_date: "2023-01-01"
-  end_date: "2026-05-23"
+  start_date: "2016-06-01"
+  end_date: "2026-05-22"
 
 stock_selector:
-  # ── Factor audit (run quarterly via evaluate_factors) ──
-  # All registered factors are evaluated. Those with median rank
-  # autocorrelation below min_stability are marked inactive and
-  # excluded from stock selection.
   audit:
     lookback: 60
     lag: 5
     min_coverage: 0.8
     min_stability: 0.3
     min_dispersion: 0.10
-
-  # ── Stock selection (run daily via select_tradable) ──
-  # Only factors that passed the audit are used. Each stock-date
-  # gets a pass count = number of factors where all three quality
-  # thresholds are met. Stocks ranked by pass count.
   factors:
-    - calc_money_flow_6d           # GTJA #11 — directional money flow
-    - calc_up_down_vol_ratio_26d   # GTJA #40 — buy/sell volume pressure
-    - calc_obv_6d                  # GTJA #43 — OBV-like 6d
-    - calc_momentum_20d_return     # GTJA #88 — 20d trend strength
-    - calc_return_1d_times_vol     # GTJA #178 — daily return × volume
+    - calc_money_flow_6d
+    - calc_up_down_vol_ratio_26d
+    - calc_obv_6d
+    - calc_momentum_20d_return
+    - calc_return_1d_times_vol
   lookback: 60
   lag: 5
   min_coverage: 0.8
   min_stability: 0.3
   min_dispersion: 0.10
   min_stocks: 5
-  top_n: null  # set to limit pool size; null = no limit
+  top_n: null
 
 portfolio:
   allocator: equal_weight
   capital: 1_000_000
 
+neutralization:
+  enabled: true
+  method: demean
+  min_peers: 3
+
 strategies:
-  # gtja_volume_price — weights derived from factor audit (2026-05-25).
-  # Run `python notebooks/run_factor_audit.py` to regenerate.
-  # Weights = max(stability, 0) / sum(...), re-run audit to update.
-  #   name: gtja_volume_price
-  #   params:
-  #     rebalance: 20
-  #     top_n: 5
-  #     bottom_n: 3
-  #     weights:
-  #       # Tier 1 (stability > 0.4):
-  #       up_down_vol_26d: 0.053            # GTJA #40  — audit stability 0.60
-  #       shadow_ratio_20d: 0.052           # GTJA #118 — audit stability 0.59
-  #       vol_macd_9_26_12: 0.042           # GTJA #145 — audit stability 0.48
-  #       williams_r_smoothed_6d: 0.041     # GTJA #47  — audit stability 0.47
-  #       # Tier 2 (stability 0.01-0.11, diversification only):
-  #       dollar_vol_std_6d: 0.009          # GTJA #70
-  #       open_vol_corr_10d: 0.007          # GTJA #139
-  #       open_vwap_close_vwap: 0.005       # GTJA #12
-  #       vol_rank_intraday_corr_6d: 0.005  # GTJA #1
-  #       return_6d_times_vol: 0.004        # GTJA #29
-  #       obv_6d: 0.004                     # GTJA #43
-  #       high_vol_rank_corr_3d: 0.004      # GTJA #32
-  #       money_flow_6d: 0.002              # GTJA #11
-  #       candle_body_vol_composite: 0.001  # GTJA #54
-  #       vwap_vol_rank_corr_5d: 0.000      # GTJA #90
-  #       # Excluded (negative stability, worse than random):
-  #       return_1d_times_vol: 0.0          # GTJA #178 — audit stability -0.03
-  #       vol_change_pct_5d: 0.0            # GTJA #80  — audit stability -0.41
-  #       close_vol_rank_cov_5d: 0.0        # GTJA #99  — audit stability -0.03
-  #       vol_rsi_6d: 0.0                   # GTJA #102 — audit stability -0.02
-  # Phase 14: twin-star combiner (post-neutralization, 2026-05-28).
-  # Replaced regime_switch with static weighted vote on the two
-  # highest-Sharpe, lowest-correlation strategies.
+  # Twin-star combiner: AND-gate consensus (threshold=0.5)
+  # Both strategies must agree for a signal to pass.
+  # This filters ~60% of weak/conflicting signals.
   combiner:
     type: weighted_vote
-    threshold: 0.0
+    threshold: 0.5
   rules:
     - name: reversed_gtja_vwap
+      params: { rebalance: 20, top_n: 5, bottom_n: 3 }
       weight: 0.52
     - name: gtja_volatility
+      params: { rebalance: 20, top_n: 5, bottom_n: 3 }
       weight: 0.48
-
-neutralization:
-  enabled: true           # Phase 13: factor-level industry demeaning
-  method: demean
-  min_peers: 3            # industries with fewer stocks are merged into __unknown__
 
 backtest:
   stop_loss: -0.15

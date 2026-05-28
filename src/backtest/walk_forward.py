@@ -75,6 +75,7 @@ def walk_forward_backtest(
     atr_stop_loss: dict | None = None,
     trading_cost: TradingCost | None = None,
     circuit_breaker: object | None = None,
+    dead_zone: float = 0.0,
 ) -> pd.DataFrame:
     """Run walk-forward backtest with rolling train/test windows.
 
@@ -118,6 +119,10 @@ def walk_forward_backtest(
     circuit_breaker : DrawdownCircuitBreaker | None
         If provided, monitors equity curve across periods and compresses
         exposure during drawdowns. Overrides ``exposure_fn`` when set.
+    dead_zone : float
+        Position smoothing dead-zone threshold. When > 0, weights that
+        change less than this amount are held from the previous day.
+        Default 0.0 (disabled). Typical value: 0.01 (1%).
 
     Returns
     -------
@@ -133,6 +138,7 @@ def walk_forward_backtest(
         return pd.DataFrame()
 
     results = []
+    prev_positions = None
 
     for i, (train_start, train_end, test_start, test_end) in enumerate(windows, 1):
         train_data = data[
@@ -195,6 +201,29 @@ def walk_forward_backtest(
         # Allocate positions
         prices = test_data[["date", "code", "close"]].drop_duplicates()
         positions = equal_weight(signals, prices, capital=capital, exposure=exposure)
+
+        # Position smoothing (dead-zone state machine)
+        if dead_zone > 0:
+            from src.portfolio.smoother import smooth_positions
+
+            # Include previous period's last-day prices so the smoother
+            # can forward-fill close for resurrected stocks.
+            smooth_prices = prices
+            if prev_positions is not None and not prev_positions.empty:
+                prev_date = prev_positions["date"].max()
+                prev_day_prices = data[data["date"] == prev_date][
+                    ["date", "code", "close"]
+                ].drop_duplicates()
+                if not prev_day_prices.empty:
+                    smooth_prices = pd.concat(
+                        [prices, prev_day_prices], ignore_index=True
+                    ).drop_duplicates(subset=["date", "code"], keep="last")
+
+            positions = smooth_positions(
+                positions, prev_positions, smooth_prices,
+                capital=capital, exposure=exposure, dead_zone=dead_zone,
+            )
+        prev_positions = positions.copy()
 
         # Apply industry cap if mapping provided
         if industry_map is not None:

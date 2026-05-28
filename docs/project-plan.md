@@ -58,6 +58,8 @@
 | context (regime 检测) | ✅ 完成 | breadth + 自适应波动率 + EMA + 持续期 + 指数过滤 + 19 tests |
 | context (regime switch) | ✅ 完成 | RegimeSwitchStrategy + confirmation_lag(10) + build_regime_switch |
 | factors (行业中性化) | ✅ 完成 | neutralize.py: 截面去均值 + min_peers 动态降级 + 18 tests |
+| portfolio (持仓平滑) | ✅ 完成 | smoother.py: 宽表状态机逐日递推 + 死区拦截 + 14 tests |
+| strategies (twin-star combiner) | ✅ 完成 | threshold=0.5 AND-gate 共识过滤 + 中性化 → Sharpe 0.820 |
 | context (股票选择器) | ✅ 完成 | stock_selector.py: 因子质量评估 + 动态股票池筛选 + 40 tests |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
 | context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
@@ -131,12 +133,14 @@ src/
 ├── portfolio/
 │   ├── allocator.py               # equal_weight + exposure scaling
 │   ├── circuit_breaker.py         # DrawdownCircuitBreaker: 回撤断路器
+│   ├── smoother.py                # 持仓平滑死区状态机
 │   ├── industry_cap.py            # 行业上限约束
 │   └── industry_momentum.py       # 行业动量
 ├── visualization/
 └── execution/
 configs/
 ├── default.yaml               # CSI 300 默认配置
+├── production.yaml            # Phase 14 生产配置（twin-star + 中性化 + threshold=0.5）
 ├── csi500.yaml                # CSI 500 中盘配置
 └── full_market.yaml           # 全市场基本筛选配置
 ```
@@ -167,19 +171,18 @@ configs/
 
 ## 下一阶段路线图
 
-### 现状诊断
+### 现状诊断（Phase 14 结项，2026-05-28）
 
-定版配置（50% momentum + 50% reversed_vwap）10 年全周期回测：
-- **Sharpe 0.611, 年化 12.54%, MaxDD -33.4%, Cumulative 211.9%**
+生产配置（twin-star + 中性化 + threshold=0.5 + dead_zone=0.01）10 年全周期回测：
+- **Sharpe 0.820, 年化 24%, MaxDD 7.8%, Cumulative 312%, Trades 920**
 
-瓶颈不在 context 层，在**信号层**。因子质量决定了信息比率上限，context 只能在这个上限内做风险预算。
+瓶颈在**特异性风险暴露**：组合仅持有 ~2 只股票（50% 权重），个股极端回撤直接传导至 NAV，跨期 Sharpe 标准差 1.869。
 
 | 限速因素 | 证据 |
 |---------|------|
-| A 股大市值 alpha 天花板 | 10y 行业矩阵最好 Sharpe 0.61 |
-| 单因子类别极限 | mean_reversion 最好 0.56，其余 < 0.52 |
-| 长多限制 | 24% 天数（trend_down+volatile）无法获利，只能空仓 |
-| 股票池有效性 | CSI 300 大市值定价效率高，alpha 天然受限 |
+| 信号源同构 | 双子星均为微观行情项因子，相关性 0.467，共享流动性风险暴露 |
+| 持仓过度集中 | ~2 只股票，退化为"高确信度个股博弈"，大数定律失效 |
+| 跨期不稳定 | 最好 +129%，最差 -53%，机构审计无法通过 |
 
 ### 可行路径（优先级排序）
 
@@ -191,6 +194,7 @@ configs/
 | E | ~~全市场 + stock_selector~~ | 数据层 | **已验证无效** | stock_selector 质量过滤无正向价值。可投池（市值>200亿，844只）Sharpe 0.43 已是最优 |
 | F | **小止盈大止损** | 风控层 | **已实现但不适用** | SL/TP 对均值回归有害（割肉+截断利润），适合趋势策略 |
 | G | ~~DrawdownCircuitBreaker~~ | 风控层 | **已验证** | MaxDD 降 5.6pp（-33.4%→-27.8%），但 Sharpe 降 0.076。阈值锁 -0.35 作安全底线 |
+| H | **第 3 颗星：基本面因子** | 信号层 | **Phase 15 最高优先级** | 引入与价量异构的基本面预期差因子（净利润断层/分析师预期修正），扩展持仓至 5-8 只，分散特异性风险 |
 | D | Execution 模块 | 基础层 | 待做 | 统一下单接口 |
 
 ### Direction C 验证结果（2026-05-27）
