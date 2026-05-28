@@ -104,6 +104,7 @@ class TestWalkForwardBacktest:
             "period", "train_start", "train_end",
             "test_start", "test_end", "total_return", "annual_return",
             "sharpe_ratio", "max_drawdown", "win_rate", "trade_count",
+            "total_cost", "cost_ratio",
         }
         assert expected_cols.issubset(set(result.columns))
 
@@ -243,6 +244,7 @@ class TestWalkForwardWithIndustryCap:
             "period", "train_start", "train_end",
             "test_start", "test_end", "total_return", "annual_return",
             "sharpe_ratio", "max_drawdown", "win_rate", "trade_count",
+            "total_cost", "cost_ratio",
         }
 
     def test_industry_cap_with_missing_codes(self):

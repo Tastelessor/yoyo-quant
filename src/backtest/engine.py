@@ -30,6 +30,17 @@ class TradingCost:
     transfer_fee: float = 0.00001
     slippage_ticks: int = 1
 
+    def __post_init__(self):
+        for name in ("commission", "stamp_tax", "transfer_fee"):
+            if getattr(self, name) < 0:
+                raise ValueError(
+                    f"{name} must be >= 0, got {getattr(self, name)}"
+                )
+        if self.slippage_ticks < 0:
+            raise ValueError(
+                f"slippage_ticks must be >= 0, got {self.slippage_ticks}"
+            )
+
 
 class BacktestEngine:
     """Simple event-driven backtest engine.

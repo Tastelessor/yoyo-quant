@@ -223,6 +223,8 @@ def walk_forward_backtest(
             "max_drawdown": m["max_drawdown"],
             "win_rate": m["win_rate"],
             "trade_count": m["trade_count"],
+            "total_cost": m["total_cost"],
+            "cost_ratio": m["cost_ratio"],
         })
 
     return pd.DataFrame(results)
