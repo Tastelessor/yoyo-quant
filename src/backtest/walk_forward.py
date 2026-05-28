@@ -10,7 +10,7 @@ from collections.abc import Callable
 
 import pandas as pd
 
-from src.backtest.engine import BacktestEngine
+from src.backtest.engine import BacktestEngine, TradingCost
 from src.portfolio.allocator import equal_weight
 from src.risk.tradability import enforce_t1, filter_tradable
 
@@ -73,6 +73,7 @@ def walk_forward_backtest(
     stop_loss: float | None = None,
     take_profit: float | None = None,
     atr_stop_loss: dict | None = None,
+    trading_cost: TradingCost | None = None,
 ) -> pd.DataFrame:
     """Run walk-forward backtest with rolling train/test windows.
 
@@ -111,6 +112,8 @@ def walk_forward_backtest(
     atr_stop_loss : dict | None
         ATR stop-loss config with keys ``atr_multiplier`` and ``atr_window``.
         None to disable.
+    trading_cost : TradingCost | None
+        Trading friction parameters. None disables all friction.
 
     Returns
     -------
@@ -206,6 +209,7 @@ def walk_forward_backtest(
             stop_loss=stop_loss,
             take_profit=take_profit,
             atr_stop_loss=atr_stop_loss,
+            trading_cost=trading_cost,
         )
         result = engine.run(positions, prices, market_data=data)
         m = result["metrics"]

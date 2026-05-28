@@ -82,9 +82,10 @@
 | date | datetime64 | 日期 |
 | code | str | 股票代码 |
 | action | str | buy/sell/stop_loss/take_profit/atr_stop_loss |
-| price | float64 | 成交价 |
+| price | float64 | 执行价（含滑点） |
 | shares | int | 成交股数 |
-| pnl | float64 | 盈亏 |
+| pnl | float64 | 盈亏（扣除摩擦后） |
+| cost | float64 | 本笔交易摩擦成本（佣金+印花税+过户费） |
 
 ### 权益曲线
 
@@ -104,8 +105,10 @@
 | annual_return | float64 | 年化收益率 |
 | sharpe_ratio | float64 | 夏普比率（无风险利率默认 0.03） |
 | max_drawdown | float64 | 最大回撤 |
-| win_rate | float64 | 胜率（盈利交易 / 总交易） |
+| win_rate | float64 | 胜率（盈利退出交易 / 总退出交易） |
 | trade_count | int | 总交易次数 |
+| total_cost | float64 | 全部交易摩擦成本之和 |
+| cost_ratio | float64 | 换手损耗率 = total_cost / turnover（turnover = 双向换手流水） |
 
 ## 订单状态 — execution 模块输出
 

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.engine import BacktestEngine
+from src.backtest.engine import BacktestEngine, TradingCost
 
 
 @pytest.fixture
@@ -78,7 +78,7 @@ def test_trades_has_required_columns(prices, buy_positions):
     engine = BacktestEngine(capital=100_000)
     result = engine.run(buy_positions, prices)
     trades = result["trades"]
-    expected = {"date", "code", "action", "price", "shares", "pnl"}
+    expected = {"date", "code", "action", "price", "shares", "pnl", "cost"}
     assert set(trades.columns) == expected
 
 
@@ -97,6 +97,7 @@ def test_metrics_has_required_keys(prices, buy_positions):
     expected = {
         "total_return", "annual_return", "sharpe_ratio",
         "max_drawdown", "win_rate", "trade_count",
+        "total_cost", "cost_ratio",
     }
     assert set(metrics.keys()) == expected
 
@@ -522,3 +523,265 @@ class TestATRStopLoss:
                 (trades["date"] > stop_date) & (trades["action"] == "buy")
             ]
             assert len(later_buys) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Trading cost / friction tests
+# ---------------------------------------------------------------------------
+
+class TestTradingCost:
+    def test_default_values(self):
+        tc = TradingCost()
+        assert tc.commission == 0.0001
+        assert tc.stamp_tax == 0.0005
+        assert tc.transfer_fee == 0.00001
+        assert tc.slippage_ticks == 1
+
+    def test_no_friction_compatible(self, prices, buy_positions):
+        """trading_cost=None should behave identically to before."""
+        engine_no_cost = BacktestEngine(capital=100_000)
+        result = engine_no_cost.run(buy_positions, prices)
+        assert result["metrics"]["total_cost"] == 0.0
+        assert result["metrics"]["cost_ratio"] == 0.0
+
+    def test_buy_deducts_fees(self):
+        """Buy should deduct commission + transfer fee from cash."""
+        dates = pd.to_datetime(["2024-01-02", "2024-01-03"])
+        prices = pd.DataFrame({
+            "date": dates.tolist(),
+            "code": ["000001"] * 2,
+            "close": [10.0, 10.5],
+        })
+        positions = pd.DataFrame({
+            "date": dates,
+            "code": ["000001"] * 2,
+            "weight": [1.0, 1.0],
+            "shares": [10000, 10000],
+        })
+        tc = TradingCost(commission=0.0001, stamp_tax=0.0, transfer_fee=0.00001,
+                         slippage_ticks=0)
+        engine = BacktestEngine(capital=1_000_000, trading_cost=tc)
+        result = engine.run(positions, prices)
+        # Buy at 10.0 * 10000 = 100000
+        # Commission = max(100000 * 0.0001, 5) = 10
+        # Transfer = 100000 * 0.00001 = 1
+        # Total cost = 11
+        buy_trade = result["trades"][result["trades"]["action"] == "buy"].iloc[0]
+        assert buy_trade["cost"] == pytest.approx(11.0, abs=0.01)
+        assert engine.cash < 1_000_000 - 100_000  # more than just share cost
+
+    def test_sell_deducts_stamp_tax(self):
+        """Sell should deduct commission + stamp tax + transfer fee."""
+        dates = pd.to_datetime(["2024-01-02", "2024-01-03"])
+        prices = pd.DataFrame({
+            "date": dates.tolist(),
+            "code": ["000001"] * 2,
+            "close": [10.0, 10.5],
+        })
+        # Buy on day 1, sell on day 2
+        positions = pd.DataFrame({
+            "date": dates,
+            "code": ["000001"] * 2,
+            "weight": [1.0, 0.0],
+            "shares": [10000, 0],
+        })
+        tc = TradingCost(commission=0.0001, stamp_tax=0.0005, transfer_fee=0.00001,
+                         slippage_ticks=0)
+        engine = BacktestEngine(capital=1_000_000, trading_cost=tc)
+        result = engine.run(positions, prices)
+        sell_trade = result["trades"][result["trades"]["action"] == "sell"].iloc[0]
+        # Sell amount = 10.5 * 10000 = 105000
+        # Commission = max(105000*0.0001, 5) = 10.5
+        # Stamp tax = 105000 * 0.0005 = 52.5
+        # Transfer = 105000 * 0.00001 = 1.05
+        # Total = 64.05
+        assert sell_trade["cost"] == pytest.approx(64.05, abs=0.1)
+
+    def test_min_commission_5_yuan(self):
+        """Small trade should still pay at least 5 CNY commission."""
+        dates = pd.to_datetime(["2024-01-02"])
+        prices = pd.DataFrame({
+            "date": dates.tolist(),
+            "code": ["000001"],
+            "close": [1.0],
+        })
+        positions = pd.DataFrame({
+            "date": dates,
+            "code": ["000001"],
+            "weight": [1.0],
+            "shares": [100],
+        })
+        tc = TradingCost(commission=0.0001, stamp_tax=0.0, transfer_fee=0.0,
+                         slippage_ticks=0)
+        engine = BacktestEngine(capital=100_000, trading_cost=tc)
+        result = engine.run(positions, prices)
+        buy_trade = result["trades"][result["trades"]["action"] == "buy"].iloc[0]
+        # amount = 100, commission = max(100*0.0001, 5) = 5.0
+        assert buy_trade["cost"] >= 5.0
+
+    def test_zero_amount_defense(self):
+        """_calc_cost with amount=0 should return 0."""
+        tc = TradingCost()
+        engine = BacktestEngine(capital=100_000, trading_cost=tc)
+        assert engine._calc_cost(0.0, is_sell=False) == 0.0
+        assert engine._calc_cost(-1.0, is_sell=True) == 0.0
+
+    def test_slippage_direction(self):
+        """Buy price should be higher, sell price should be lower."""
+        dates = pd.to_datetime(["2024-01-02", "2024-01-03"])
+        prices = pd.DataFrame({
+            "date": dates.tolist(),
+            "code": ["000001"] * 2,
+            "close": [10.0, 10.5],
+        })
+        positions = pd.DataFrame({
+            "date": dates,
+            "code": ["000001"] * 2,
+            "weight": [1.0, 0.0],
+            "shares": [10000, 0],
+        })
+        tc = TradingCost(commission=0.0, stamp_tax=0.0, transfer_fee=0.0,
+                         slippage_ticks=1)
+        engine = BacktestEngine(capital=1_000_000, trading_cost=tc)
+        result = engine.run(positions, prices)
+        buy_trade = result["trades"][result["trades"]["action"] == "buy"].iloc[0]
+        sell_trade = result["trades"][result["trades"]["action"] == "sell"].iloc[0]
+        assert buy_trade["price"] == pytest.approx(10.01)   # +0.01
+        assert sell_trade["price"] == pytest.approx(10.49)  # -0.01
+
+    def test_cost_basis_amortization(self):
+        """entry_prices should include buy fees (all-in cost price)."""
+        dates = pd.to_datetime(["2024-01-02", "2024-01-03"])
+        prices = pd.DataFrame({
+            "date": dates.tolist(),
+            "code": ["000001"] * 2,
+            "close": [10.0, 10.5],
+        })
+        positions = pd.DataFrame({
+            "date": dates,
+            "code": ["000001"] * 2,
+            "weight": [1.0, 0.0],
+            "shares": [10000, 0],
+        })
+        tc = TradingCost(commission=0.0001, stamp_tax=0.0005, transfer_fee=0.00001,
+                         slippage_ticks=0)
+        engine = BacktestEngine(capital=1_000_000, trading_cost=tc)
+        result = engine.run(positions, prices)
+        # Buy at 10.0, fees = 11.0 (commission 10 + transfer 1)
+        # All-in cost = (100000 + 11) / 10000 = 10.0011
+        buy_trade = result["trades"][result["trades"]["action"] == "buy"].iloc[0]
+        sell_trade = result["trades"][result["trades"]["action"] == "sell"].iloc[0]
+        expected_entry = (100000 + buy_trade["cost"]) / 10000
+        sell_fees = sell_trade["cost"]
+        expected_pnl = 10000 * (10.5 - expected_entry) - sell_fees
+        assert sell_trade["pnl"] == pytest.approx(expected_pnl, abs=0.01)
+
+    def test_pnl_lifecycle_audit(self):
+        """Full lifecycle: Final Cash - Initial Cash == sum(trades['pnl'])."""
+        dates = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"])
+        prices = pd.DataFrame({
+            "date": dates.tolist(),
+            "code": ["000001"] * 3,
+            "close": [10.0, 10.5, 11.0],
+        })
+        positions = pd.DataFrame({
+            "date": dates,
+            "code": ["000001"] * 3,
+            "weight": [1.0, 1.0, 0.0],
+            "shares": [10000, 10000, 0],
+        })
+        tc = TradingCost(commission=0.0001, stamp_tax=0.0005, transfer_fee=0.00001,
+                         slippage_ticks=1)
+        initial = 1_000_000.0
+        engine = BacktestEngine(capital=initial, trading_cost=tc)
+        result = engine.run(positions, prices)
+
+        cash_delta = engine.cash - initial
+        sum_pnl = result["trades"]["pnl"].sum()
+        assert abs(cash_delta - sum_pnl) < 1e-6
+
+        # Buy pnl must be 0, cost must be > 0
+        buy_trade = result["trades"][result["trades"]["action"] == "buy"].iloc[0]
+        assert buy_trade["pnl"] == 0.0
+        assert buy_trade["cost"] > 0.0
+
+        # Metrics consistency
+        assert result["metrics"]["total_cost"] == pytest.approx(
+            result["trades"]["cost"].sum(), abs=1e-6
+        )
+        assert result["metrics"]["cost_ratio"] > 0.0
+
+    def test_zero_turnover_no_crash(self):
+        """No trades → cost_ratio = 0, no ZeroDivisionError."""
+        dates = pd.to_datetime(["2024-01-02"])
+        prices = pd.DataFrame({
+            "date": dates.tolist(),
+            "code": ["000001"],
+            "close": [10.0],
+        })
+        empty = pd.DataFrame(columns=["date", "code", "weight", "shares"])
+        tc = TradingCost()
+        engine = BacktestEngine(capital=100_000, trading_cost=tc)
+        result = engine.run(empty, prices)
+        assert result["metrics"]["cost_ratio"] == 0.0
+
+    def test_friction_reduces_returns(self):
+        """Same strategy with friction should have lower returns."""
+        dates = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"])
+        prices = pd.DataFrame({
+            "date": dates.tolist(),
+            "code": ["000001"] * 3,
+            "close": [10.0, 10.5, 11.0],
+        })
+        positions = pd.DataFrame({
+            "date": dates,
+            "code": ["000001"] * 3,
+            "weight": [1.0, 1.0, 0.0],
+            "shares": [10000, 10000, 0],
+        })
+        engine_no_cost = BacktestEngine(capital=1_000_000)
+        result_no_cost = engine_no_cost.run(positions, prices)
+
+        tc = TradingCost()
+        engine_with_cost = BacktestEngine(capital=1_000_000, trading_cost=tc)
+        result_with_cost = engine_with_cost.run(positions, prices)
+
+        assert (result_with_cost["metrics"]["total_return"]
+                < result_no_cost["metrics"]["total_return"])
+
+    def test_limit_price_clipping(self):
+        """Slippage should be clipped to limit_up/limit_down."""
+        dates = pd.to_datetime(["2024-01-02", "2024-01-03"])
+        prices = pd.DataFrame({
+            "date": dates.tolist(),
+            "code": ["000001"] * 2,
+            "close": [10.0, 10.5],
+        })
+        # limit_up very close to close price
+        market_data = pd.DataFrame({
+            "date": dates.tolist(),
+            "code": ["000001"] * 2,
+            "open": [10.0, 10.5],
+            "high": [10.01, 10.51],
+            "low": [9.99, 10.49],
+            "close": [10.0, 10.5],
+            "volume": [1_000_000] * 2,
+            "limit_up": [10.01, 10.51],  # very tight
+            "limit_down": [9.99, 10.49],
+        })
+        positions = pd.DataFrame({
+            "date": dates,
+            "code": ["000001"] * 2,
+            "weight": [1.0, 0.0],
+            "shares": [10000, 0],
+        })
+        tc = TradingCost(commission=0.0, stamp_tax=0.0, transfer_fee=0.0,
+                         slippage_ticks=5)  # 5 ticks = 0.05
+        engine = BacktestEngine(capital=1_000_000, trading_cost=tc)
+        result = engine.run(positions, prices, market_data=market_data)
+        buy_trade = result["trades"][result["trades"]["action"] == "buy"].iloc[0]
+        sell_trade = result["trades"][result["trades"]["action"] == "sell"].iloc[0]
+        # Buy: 10.0 + 0.05 = 10.05, but limit_up=10.01 → clipped to 10.01
+        assert buy_trade["price"] == pytest.approx(10.01)
+        # Sell: 10.5 - 0.05 = 10.45, but limit_down=10.49 → clipped to 10.49
+        assert sell_trade["price"] == pytest.approx(10.49)

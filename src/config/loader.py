@@ -100,6 +100,9 @@ def build_backtest_config(cfg: dict) -> dict:
         result["take_profit"] = bt_cfg["take_profit"]
     if "atr_stop_loss" in bt_cfg:
         result["atr_stop_loss"] = bt_cfg["atr_stop_loss"]
+    if "trading_cost" in bt_cfg:
+        from src.backtest.engine import TradingCost
+        result["trading_cost"] = TradingCost(**bt_cfg["trading_cost"])
     return result
 
 

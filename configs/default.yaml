@@ -207,6 +207,11 @@ strategies:
 backtest:
   stop_loss: -0.15
   take_profit: 0.05
+  trading_cost:
+    commission: 0.0001
+    stamp_tax: 0.0005
+    transfer_fee: 0.00001
+    slippage_ticks: 1
 
 risk:
   rules:
