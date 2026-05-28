@@ -628,3 +628,80 @@
 | 2026-05-27 | MultiCategory 用加权投票而非独立组合 | 复用现有 WeightedVoteCombiner，改动最小 |
 | 2026-05-27 | SL/TP 放在 BacktestEngine 而非 RiskRule | RiskRule 操作 target positions（无 entry price），Engine 操作 actual holdings |
 | 2026-05-27 | 全市场 + stock_selector 是正确方向 | 全市场提供选股空间，stock_selector 保证因子质量 |
+
+---
+
+## Phase 11: Risk 层重构 + 交易费率模型 ✅ 完成
+
+### 目标
+消除 Risk 层与 BacktestEngine 之间的架构冲突（止损逻辑去同步），建立真实的 A 股交易摩擦模型。
+
+### Task 1: 止损逻辑从 Risk 层迁移到 BacktestEngine ✅
+
+**架构冲突**：`src/risk/stop_loss.py` 通过 `_ensure_avg_cost` 逐日循环盲推持仓成本，与 BacktestEngine 真实账户状态去同步。Risk 层止损规则"已配置但从未接入"——`walk_forward_backtest` 从不调用 `RuleEngine.run()`。
+
+**改动**：
+- [x] 增强 BacktestEngine：新增 `atr_stop_loss` 参数和 `market_data` 参数
+- [x] ATR 预计算：`calc_atr` 全局计算 + `(date, code)` 键对齐（修复了排序不一致 bug）
+- [x] `stopped_today` 黑名单：日循环第一行初始化，防止止损当天重新买入
+- [x] `entry_prices.pop(code, None)` 同步清理，防止残留陈旧 entry_price
+- [x] if-if-if 级联 + `not triggered` 守卫：ATR→固定止损→止盈，任一触发后跳过
+- [x] 删除 `src/risk/stop_loss.py`（218 行）和 `tests/risk/test_stop_loss.py`（395 行）
+- [x] 更新 `rule_registry.py` 和 `risk/__init__.py`，移除 3 个止损规则注册
+- [x] 新增 `build_backtest_config()` 到 config/loader.py
+- [x] 更新 `walk_forward_backtest` 透传止损参数和 market_data
+- [x] 6 个 YAML 配置文件：止损从 `risk.rules` 移到 `backtest` 配置段
+- [x] 更新 `docs/data-schemas.md`：移除 `avg_cost`，更新 trade action 枚举
+- [x] 新增 10 个 ATR 止损测试（含 date-interleaved 数据对齐测试）
+- 测试通过（24 → 25 tests）
+
+### Task 2: 交易费率与滑点模型 ✅
+
+**问题**：BacktestEngine 是理想状态撮合（零摩擦），回测夏普率含 30%+ 水分。
+
+**改动**：
+- [x] `TradingCost` dataclass：佣金（万1，最低5元）+ 印花税（万5，卖出单边）+ 过户费（十万1）+ 滑点 tick
+- [x] `_calc_cost()`：零金额防御（amount ≤ 0 返回 0.0）
+- [x] `_apply_slippage()`：含涨跌停价格剪裁（limit_up/limit_down）
+- [x] 买入逻辑：精确逆向推算（分段函数取极小值）+ 浮点容差 0.01 元
+- [x] 成本摊薄法：`entry_prices = (amount + buy_fees) / shares`，止损锚定真实盈亏平衡线
+- [x] 卖出逻辑（3 处统一）：滑点 + 佣金 + 印花税 + 过户费
+- [x] `day_limits` 字典：日循环顶部构建，O(1) 查询
+- [x] 新增 metrics：`total_cost`（总摩擦成本）、`cost_ratio`（换手损耗率）
+- [x] Trade record 新增 `cost` 列
+- [x] `__post_init__` 验证：负值抛 ValueError
+- [x] `walk_forward_backtest` 结果传播 total_cost/cost_ratio
+- [x] `build_backtest_config` 支持 trading_cost 段
+- [x] `configs/default.yaml` 新增 backtest.trading_cost 配置
+- [x] 更新 `docs/data-schemas.md`：cost 列、total_cost/cost_ratio 指标
+- [x] 新增 14 个摩擦测试（含 PnL 生命周期对账、涨跌停剪裁、边界资金）
+- 测试通过（25 → 39 tests）
+
+### Code Review 修复 ✅
+
+| Issue | 严重性 | 修复 |
+|-------|--------|------|
+| ATR map 对齐 bug（calc_atr 内部排序不一致） | Critical | 对 market_data 按 ["code","date"] 排序后再计算 |
+| 弱断言（test_stopped_today/test_entry_prices） | Important | 改为 3 天场景 + PnL 验证 |
+| win_rate 排除止损交易 | Important | 扩展 exit_actions 列表 |
+| TradingCost 无输入验证 | Important | 新增 __post_init__ |
+| walk_forward 丢失成本指标 | Important | 结果新增 total_cost/cost_ratio |
+| 缺少边界资金测试 | Important | 新增 test_insufficient_funds_after_fees |
+| 缺少止损路径对账 | Important | 新增 test_pnl_lifecycle_stop_loss |
+
+### 测试统计
+- 新增测试：10 (ATR stop-loss) + 14 (trading cost) = 24 tests
+- 删除测试：17 (risk stop_loss)
+- 净增：+7 tests
+- 总测试数：677 tests
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-05-28 | 止损逻辑从 Risk 层移到 BacktestEngine | Risk 层盲推 avg_cost 与 Engine 真实账户去同步；规则从未被接入 |
+| 2026-05-28 | 成本摊薄法而非分离记录 | entry_prices 含买入费用，止损锚定真实盈亏平衡线 |
+| 2026-05-28 | 逆向推算分段函数而非简单预扣 | 大额交易时比例佣金 > 5 元底线，需取两种情况极小值 |
+| 2026-05-28 | 浮点容差 0.01 元而非 min 截断 | 保证数学守恒：cash_delta == sum(pnl) |
+| 2026-05-28 | 涨跌停剪裁在 _apply_slippage 内部 | 买入和卖出统一处理，防止滑点超越法定边界 |
+| 2026-05-28 | TradingCost 用 dataclass 而非 dict | 类型安全 + 默认值 + __post_init__ 验证 |

@@ -44,9 +44,9 @@
 | portfolio (equal weight) | ✅ 完成 | allocator.py + 9 tests |
 | risk (position limit) | ✅ 完成 | position_limit.py + 14 tests |
 | risk (规则引擎) | ✅ 完成 | Rule ABC + RuleEngine + 15 tests |
-| risk (止损) | ✅ 完成 | 固定止损 + ATR 动态止损 + 12 tests |
+| risk (止损) | ✅ 重构 | 止损逻辑已迁移到 BacktestEngine，Risk 层仅保留截面过滤规则 |
 | backtest (rqalpha adapter) | ✅ 完成 | adapter.py + 11 tests |
-| backtest (lightweight engine) | ✅ 完成 | engine.py + 15 tests |
+| backtest (lightweight engine) | ✅ 完成 | engine.py: SL/TP/ATR + TradingCost(佣金/印花税/过户费/滑点) + 39 tests |
 | backtest (walk-forward) | ✅ 完成 | walk_forward.py + 11 tests |
 | visualization | ✅ 完成 | charts.py + 9 tests |
 | analysis (参数扫描) | ✅ 完成 | param_sweep.py + plot.py + 18 tests |
@@ -61,10 +61,10 @@
 | strategies (多类别组合) | ✅ 完成 | multi_category.py: 6 类别加权投票 + 7 tests |
 | data (指数成分股) | ✅ 完成 | fetcher.py: fetch_index_constituents + fetch_daily_batch + 18 tests |
 | data (全市场基本筛选) | ✅ 完成 | fetcher.py: fetch_all_stocks + fetch_fundamentals + apply_fundamental_filters |
-| risk (止盈规则) | ✅ 完成 | stop_loss.py: FixedTakeProfitRule + BacktestEngine SL/TP 参数 + 7 tests |
+| risk (止盈规则) | ✅ 重构 | 已迁移到 BacktestEngine（与止损统一管理） |
 | execution | 🔲 未开始 | 统一下单接口 |
 
-**测试总计**：633 tests（47 个测试文件）
+**测试总计**：677 tests（47 个测试文件）
 
 ## 目录结构
 
@@ -102,7 +102,6 @@ src/
 │   ├── rule_engine.py           # RuleEngine
 │   ├── rule_registry.py         # 风险规则注册表
 │   ├── position_limit.py
-│   ├── stop_loss.py
 │   └── tradability.py
 ├── strategies/
 │   ├── base.py                  # Strategy ABC
