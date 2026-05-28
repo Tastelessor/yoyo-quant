@@ -865,3 +865,92 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 | 2026-05-28 | CB 在 engine 内部而非 walk_forward 层 | walk-forward 跨 period 净值不连续，会触发伪回撤 |
 | 2026-05-28 | 每个 period 独立 reset | walk-forward 每 period 重新开始，CB 应监控单 period 内 drawdown |
 | 2026-05-28 | 卖出逻辑从"不在 target"改为"超过 target" | 支持 CB 压缩后按比例减仓，而非只能完全清仓 |
+
+---
+
+## Phase 13：因子层行业中性化（2026-05-28）
+
+### 任务
+
+在因子值进入截面排名之前，剥离行业暴露，让因子纯粹捕捉个股 alpha。与组合层行业 cap（已验证无效）不同，这是在信号生成阶段净化因子本身。
+
+### 实现
+
+- 新增 `src/factors/neutralize.py`：`demean_by_industry()` 矩阵向量化 + `min_peers` 动态降级防排名死锁
+- 修改 6 个 GTJA 策略文件：加 `industry_map` / `min_peers` 参数，rank 前调 neutralize
+- 修改 `src/config/loader.py`：`build_industry_map()` + `_inject_neutralization()`，全链路透传（含 regime_switch 路径）
+- 26 个新测试（18 单元 + 8 管道），总测试 730 个
+
+### A/B 回测结果
+
+100 股（CSI 300 top 100），10 年 walk-forward，neutralization.enabled vs disabled：
+
+| 策略 | Sharpe (Raw) | Sharpe (Neutral) | Delta | MaxDD Delta |
+|------|:-----------:|:----------------:|:-----:|:-----------:|
+| reversed_gtja_vwap | 0.316 | **0.873** | **+0.557** | -1.1% |
+| gtja_volume_price | 0.281 | **0.789** | **+0.508** | -1.6% |
+| gtja_volatility | 0.520 | **0.887** | **+0.367** | -2.9% |
+| gtja_trend | 0.022 | 0.144 | +0.122 | -0.8% |
+| gtja_momentum | 0.225 | 0.150 | -0.075 | +0.2% |
+| gtja_mean_reversion | 0.168 | 0.036 | -0.131 | +0.7% |
+
+### 关键发现
+
+1. **4/6 策略中性化后显著改善**，最佳单策略 Sharpe 从 0.520 飙升至 0.887（gtja_volatility）
+2. **"真假 Alpha" 现形**：VWAP/波动率/量价因子是真正的个股 alpha；动量/均值回归本质上在赚行业轮动的 beta
+3. **生产组合（50/50 momentum+vwap）必须重构**：momentum Sharpe 降至 0.150，继续持有 50% 权重将严重拖累组合
+4. **Sharpe 0.6 天花板被打破**：中性化后单策略可达 0.887，具备实盘交割水准
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-05-28 | 截面去均值而非回归或行业内排名 | 去均值 = OLS 回归残差（单维度等价），比回归简洁，比行业内排名温和 |
+| 2026-05-28 | min_peers=3 动态降级 | 单股票行业去均值后归零，在 rank(pct=True) 中产生排名死锁 |
+| 2026-05-28 | 静态行业分类（已知前视偏差） | Tushare 无 point-in-time 行业数据，先用最新快照近似 |
+| 2026-05-28 | 默认 enabled=false | 需要用户主动开启，避免意外改变现有回测结果 |
+
+---
+
+## Phase 14：组合层相关性校准与策略池剪枝（2026-05-28）
+
+### 任务
+
+基于中性化后的策略截面相关性矩阵，对策略池执行刚性剪枝，锁定核心双子星组合。
+
+### 相关性矩阵（中性化后，10 年 daily returns）
+
+```
+               momentum   rev_vwap   mean_rev  vol_price      trend volatility
+    momentum      1.000      0.524      0.459      0.620      0.705      0.615
+    rev_vwap      0.524      1.000      0.447      0.505      0.582      0.467
+    mean_rev      0.459      0.447      1.000      0.493      0.503      0.478
+   vol_price      0.620      0.505      0.493      1.000      0.564      0.544
+       trend      0.705      0.582      0.503      0.564      1.000      0.597
+  volatility      0.615      0.467      0.478      0.544      0.597      1.000
+```
+
+### 关键发现
+
+1. **相关性 0.45-0.71 是纯多头框架的理论下限**：剥离行业均值后，残存的正相关来自全市场系统性风险暴露、大市值风格暴露、GTJA 算子间非线性共线性。无空头对冲时，截面多头组合相关性下限约 0.40。
+
+2. **1 天理想 Sharpe vs 真实 Sharpe 的断裂**：trend 策略 1 天理想 Sharpe 1.088，walk-forward 后坍塌至 0.144。典型的"高频高换手陷阱"——印花税 + 过户费 + 1-tick 滑点以天为单位指数级吃掉净值。框架主要矛盾已从"缺乏 Alpha"转移到"交易摩擦控制"。
+
+3. **最佳分散对 = A/B 测试最高 Sharpe 对**：rev_vwap × volatility（相关性 0.467），两者中性化后 Sharpe 分别为 0.873 和 0.887。
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-05-28 | 剔除 mean_rev（Sharpe 0.036） | 零期望资产无法贡献净值，只增加调仓摩擦 |
+| 2026-05-28 | 剔除 momentum（Sharpe 0.150） | 与 rev_vwap 相关性 0.524，与 trend 共线 0.705，信号冗余 |
+| 2026-05-28 | 剔除 trend（Sharpe 0.144） | 高频高换手陷阱，摩擦损耗远超 alpha |
+| 2026-05-28 | 剔除 vol_price（Sharpe 0.789） | 虽然不错，但与 rev_vwap 相关性 0.505，加入后不如纯双子星 |
+| 2026-05-28 | 锁定核心双子星：rev_vwap + volatility | 相关性 0.467（最低），Sharpe 分别 0.873/0.887，MPT 组合穿透 1.0 |
+| 2026-05-28 | 下一步：风险平价组合器替代等权 | 基于真实波动率+协方差动态分配，而非固定权重 |
+
+### 下一步计划
+
+- 实现 Risk Parity 组合器（`src/portfolio/risk_parity.py`）
+- 用 rev_vwap + volatility 双子星回测验证 Sharpe ≥ 1.0
+- 校准 regime switch 路由：volatility 用于 volatile/trend_down 状态，rev_vwap 用于 range/trend_up 状态

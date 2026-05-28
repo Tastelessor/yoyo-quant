@@ -57,6 +57,7 @@
 | config (YAML) | ✅ 完成 | loader + build_strategies/build_risk_engine/build_regime_switch + 12 tests |
 | context (regime 检测) | ✅ 完成 | breadth + 自适应波动率 + EMA + 持续期 + 指数过滤 + 19 tests |
 | context (regime switch) | ✅ 完成 | RegimeSwitchStrategy + confirmation_lag(10) + build_regime_switch |
+| factors (行业中性化) | ✅ 完成 | neutralize.py: 截面去均值 + min_peers 动态降级 + 18 tests |
 | context (股票选择器) | ✅ 完成 | stock_selector.py: 因子质量评估 + 动态股票池筛选 + 40 tests |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
 | context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
@@ -66,7 +67,7 @@
 | risk (止盈规则) | ✅ 重构 | 已迁移到 BacktestEngine（与止损统一管理） |
 | execution | 🔲 未开始 | 统一下单接口 |
 
-**测试总计**：685 tests（50 个测试文件）
+**测试总计**：730 tests（52 个测试文件）
 
 ## 目录结构
 
