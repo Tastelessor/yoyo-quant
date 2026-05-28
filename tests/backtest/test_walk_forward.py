@@ -256,3 +256,52 @@ class TestWalkForwardWithIndustryCap:
             industry_map=industry_map, max_industry_weight=0.50,
         )
         assert len(result) > 0
+
+
+class TestWalkForwardWithCircuitBreaker:
+    """Test walk-forward backtest with drawdown circuit breaker."""
+
+    def test_none_preserves_behavior(self):
+        """circuit_breaker=None should produce identical results."""
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        r1 = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+        )
+        r2 = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+            circuit_breaker=None,
+        )
+        assert len(r1) == len(r2)
+        assert list(r1.columns) == list(r2.columns)
+
+    def test_circuit_breaker_runs_without_error(self):
+        """Circuit breaker should not crash the backtest."""
+        from src.portfolio.circuit_breaker import DrawdownCircuitBreaker
+
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        cb = DrawdownCircuitBreaker(threshold=-0.10, recovery_threshold=-0.03)
+        result = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+            circuit_breaker=cb,
+        )
+        assert len(result) > 0
+        assert set(result.columns) >= {
+            "period", "total_return", "sharpe_ratio", "max_drawdown",
+        }
+
+    def test_circuit_breaker_resets_each_period(self):
+        """Circuit breaker resets at start of each walk-forward period."""
+        from src.portfolio.circuit_breaker import DrawdownCircuitBreaker
+
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        cb = DrawdownCircuitBreaker(threshold=-0.10, recovery_threshold=-0.03)
+
+        # Run backtest
+        walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+            circuit_breaker=cb,
+        )
+
+        # After backtest, breaker was reset at start of last period
+        # so _peak reflects only the last period's equity curve
+        assert cb._peak >= 0

@@ -10,9 +10,22 @@ A 股量化策略研究框架 —— 从数据到回测的完整管道，专注�
 - **策略包装器**：ReversedStrategy（反向信号）、RegimeSwitchStrategy（市场状态自适应路由）
 - **Context 路由层**：regime 检测 → 策略切换 → 参数路由（rebalance/top_n per regime），股票选择器（因子质量评估 → 动态股票池）
 - **完整回测管道**：data → factors → strategies → portfolio → risk → backtest → visualization
-- **风控引擎**：可组合规则引擎（止损/仓位限制/T+1/涨跌停过滤）
+- **风控引擎**：可组合规则引擎（止损/仓位限制/T+1/涨跌停过滤）+ DrawdownCircuitBreaker（回撤断路器）
+- **交易摩擦模型**：佣金（万1/最低5元）+ 印花税（万5/卖出单边）+ 过户费 + 滑点 tick + 涨跌停价格剪裁
 - **分析工具**：参数网格扫描、管道诊断、策略×行业矩阵、因子审计（全局 + per-regime）
-- **577 个测试**：单元测试 + 管道测试 + 集成测试
+- **685 个测试**：单元测试 + 管道测试 + 集成测试
+
+## 定版配置回测结果
+
+50% gtja_momentum + 50% reversed_gtja_vwap，100 只 CSI 300，2016-05 ~ 2026-05 全周期连续回测：
+
+| 指标 | 值 |
+|------|-----|
+| 总收益 | 211.9% |
+| 年化收益 | 12.54% |
+| Sharpe | 0.611 |
+| 最大回撤 | -33.4% |
+| 交易次数 | 5806 |
 
 ## 数据流
 
@@ -66,8 +79,11 @@ configs/default.yaml
     │ reversed.py        ReversedStrategy（信号翻转包装器）                │
     │ builtin/           13 个策略实现                                    │
     └────────────────────────────────────────────────────────────────────┘
-    ┌─ portfolio 层（仓位分配）──────────────────────────────────┐
-    │ allocator.py       equal_weight(signals, prices, capital)          │
+    ┌─ portfolio 层（仓位分配 + 风控叠加）───────────────────────┐
+    │ allocator.py       equal_weight(signals, prices, capital, exposure) │
+    │ circuit_breaker.py DrawdownCircuitBreaker                           │
+    │   └── 阈值触发 → 渐进压缩 exposure → fast recovery 动量解除         │
+    │   └── dead-zone: 仅当 exposure 变化 > 5% 时才调整持仓               │
     └────────────────────────────────────────────────────────────────────┘
     └── 产出：信号 DataFrame (date/code/signal/confidence) + 仓位 DataFrame
   │
@@ -76,7 +92,6 @@ configs/default.yaml
     rules.py            Rule ABC + RuleContext（规则数据总线）
     rule_engine.py      RuleEngine（按 priority 排序的链式执行引擎）
     rule_registry.py    风险规则名称 → 类映射
-    stop_loss.py        FixedStopLossRule(120) / ATRStopLossRule(121)
     position_limit.py   PositionLimitRule(150)
     tradability.py      TradabilityRule(200) / T1Rule(210)
     └── 产出：过滤后的信号 + 风控约束后的仓位
@@ -84,9 +99,12 @@ configs/default.yaml
   ▼
 [6] src/backtest/                        [7] src/visualization/
     engine.py                             charts.py
-    BacktestEngine(capital).run()         plot_equity_curve()
-    └── 产出：trades + equity_curve       plot_drawdown()
-         + performance metrics            plot_backtest_summary()
+    BacktestEngine(capital,               plot_equity_curve()
+      stop_loss, take_profit,             plot_drawdown()
+      trading_cost,                       plot_backtest_summary()
+      circuit_breaker).run()
+    └── 产出：trades + equity_curve
+         + performance metrics
 ```
 
 ### Context 层决策流
@@ -111,6 +129,24 @@ configs/default.yaml
         select_tradable()      ──▶ 日频级：因子质量达标 → 动态股票池
 ```
 
+### DrawdownCircuitBreaker 决策流
+
+```
+每日净值 (equity)
+  │
+  ├──▶ 计算 drawdown = (equity - peak) / peak
+  │       │
+  │       ├──▶ drawdown > threshold (-35%)  ──▶ exposure 渐进压缩至 min_exposure
+  │       │       │
+  │       │       └──▶ 3 日净值反弹 > 5%?  ──▶ Fast Recovery: exposure 重置 1.0
+  │       │
+  │       └──▶ drawdown < recovery (-15%)  ──▶ exposure 渐进恢复至 1.0
+  │
+  └──▶ Dead-Zone: |new_exposure - current| > 0.05 时才调整持仓
+          │
+          └──▶ 按 exposure 比例压缩 target shares → engine 按比例减仓
+```
+
 ## 经验教训
 
 经过大量回测验证后的发现：
@@ -124,6 +160,8 @@ configs/default.yaml
 - **因子稳定性排名跨 regime 高度一致**：VWAP 和 ATR 系列在任何行情下都是 top performer，rank correlation 类因子在任何行情下都是噪声
 - **RegimeSwitch 的价值在极端行情避险**，日常平替 baseline，但暴跌时能少亏 24%
 - **per-regime 因子权重切换增量极小**，参数路由（rebalance/top_n per regime）更有意义
+- **DrawdownCircuitBreaker 降低 MaxDD 但不提升 Sharpe**：阈值 -35% 可将 MaxDD 从 -33.4% 压到 -27.8%，但 Sharpe 从 0.611 降到 0.535。CB 的价值在风控（MaxDD），不在收益（Sharpe）
+- **A 股滑点注意**：market_data 的 limit_up/limit_down 是 bool 标志（是否涨停），不是价格。_apply_slippage 必须做类型检查，否则 min(price, False)=0
 
 ## 当前路线图
 
@@ -133,7 +171,7 @@ configs/default.yaml
 | 2 | Regime Switch | ✅ | [regime_switch.py](src/context/regime_switch.py) |
 | 3 | 股票选择器 | ✅ | [stock_selector.py](src/context/stock_selector.py) |
 | 4 | 参数路由 | ✅ | [param_router.py](src/context/param_router.py) |
-| 5 | 因子选择 | 🔲 | context layer — regime-aware factor subset |
+| 5 | Circuit Breaker | ✅ | [circuit_breaker.py](src/portfolio/circuit_breaker.py) |
 | 6 | Execution 模块 | 🔲 | 统一下单接口（模拟/实盘） |
 
 ## 快速开始
@@ -143,7 +181,7 @@ git clone <this-repo>
 cd yoyo-quant
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest  # 577 tests
+pytest  # 685 tests
 ```
 
 需要在 `.env` 中配置 `TUSHARE_TOKEN`。单元测试不依赖外部 API。
@@ -159,14 +197,14 @@ yoyo-quant/
 │   ├── context/          # regime + regime_switch + stock_selector + param_router
 │   ├── data/             # fetcher + storage + filters + universe
 │   ├── factors/          # operators(11) + 6 GTJA categories(46 factors) + registry + cointegration
-│   ├── portfolio/        # equal_weight allocator
-│   ├── risk/             # rules + rule_engine + rule_registry + stop_loss + tradability
+│   ├── portfolio/        # equal_weight allocator + circuit_breaker
+│   ├── risk/             # rules + rule_engine + rule_registry + tradability
 │   ├── strategies/       # base + combiner + registry + reversed + builtin/(13 strategies)
 │   └── visualization/    # charts
-├── tests/                # 577 tests (mirrors src/ structure)
+├── tests/                # 685 tests (mirrors src/ structure)
 ├── tests_pipeline/       # cross-module pipeline tests
 ├── tests_integration/    # real API (skips without token)
-├── notebooks/            # exploration + factor audit
+├── notebooks/            # exploration + factor audit + CB comparison
 ├── configs/              # YAML configuration
 ├── docs/                 # project-plan.md + history.md + data-schemas.md
 └── CLAUDE.md             # development conventions

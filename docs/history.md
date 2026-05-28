@@ -705,3 +705,163 @@
 | 2026-05-28 | 浮点容差 0.01 元而非 min 截断 | 保证数学守恒：cash_delta == sum(pnl) |
 | 2026-05-28 | 涨跌停剪裁在 _apply_slippage 内部 | 买入和卖出统一处理，防止滑点超越法定边界 |
 | 2026-05-28 | TradingCost 用 dataclass 而非 dict | 类型安全 + 默认值 + __post_init__ 验证 |
+
+---
+
+## Phase 12 补充：全周期连续回测 + Dead-Zone + Fast Recovery ✅ 完成
+
+### 全周期连续回测（路径 A）
+
+**问题**：walk-forward 每 period 重置 initial_capital，CB 的 HWM 被抹平，导致跨 period 状态断裂。
+
+**方案**：直接用 BacktestEngine.run() 跑完整 10 年（2016-05 ~ 2026-05），单次连续运行。
+
+**结果**：
+
+| 配置 | Return | Sharpe | MaxDD | CB Trades |
+|------|--------|--------|-------|-----------|
+| **Baseline** | **211.9%** | **0.611** | -33.4% | — |
+| CB-10% | 46.1% | 0.383 | -14.4% | 2594 |
+| CB-15% | 60.7% | 0.397 | -17.5% | 2814 |
+| CB-25% | 76.8% | 0.400 | -24.4% | 1849 |
+| CB-35% | 139.6% | 0.535 | -27.8% | 1772 |
+| CB-40% | 157.6% | 0.545 | -29.6% | 1736 |
+| CB-50% | 185.5% | 0.577 | -31.6% | 1702 |
+
+**结论**：CB 在连续 HWM 下确实有效降低 MaxDD（-33.4% → -14.4%），但 Sharpe 全面下降。阈值越低，避险越强但踏空越严重。
+
+### Dead-Zone + Fast Recovery（方案 1 + 2）
+
+**Dead-Zone**：只有当 exposure 变化超过步长（默认 0.05）时才调整持仓。CB Trades 从 2814 降至 1811（-36%）。
+
+**Fast Recovery**：当策略净值 3 日反弹超过阈值（默认 5%），强制 exposure 重置为 1.0，绕过慢速 hysteresis。在 2025-08/09 月份帮助追涨 +3.4%/+13.7%。
+
+**组合效果**：
+
+| 配置 | Return | Sharpe | MaxDD | vs Baseline |
+|------|--------|--------|-------|-------------|
+| Baseline | 211.9% | 0.611 | -33.4% | — |
+| CB-35% DZ5 FR5 | 139.6% | 0.535 | -27.8% | Sharpe -0.076, MaxDD +5.6pp |
+| CB-50% DZ5 FR5 | 185.5% | 0.577 | -31.6% | Sharpe -0.034, MaxDD +1.8pp |
+
+### 最终结论
+
+**DrawdownCircuitBreaker 作为 Sharpe 提升工具已到极限**：
+- 在 10 年窗口内，-50% drawdown 也不算尾部事件，CB 无法区分"正常回撤"和"系统性危机"
+- CB 的价值在于 MaxDD 压缩（风控目标），不在于 Sharpe 提升（收益目标）
+- 最优安全底线：threshold=-0.35，作为熔断保底，不作为常态策略
+
+**已修复的 Bug**：`_apply_slippage` 将 boolean `limit_up/limit_down` 当作价格处理，导致 `min(price, False)=0`。修复为类型检查，忽略 boolean 值。
+
+### 测试统计
+- 总测试数：685 tests
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-05-28 | CB 阈值锁定 -0.35 作为安全底线 | -35% 是 10 年窗口内唯一可区分的极端尾部事件（2018-10 -33.4%） |
+| 2026-05-28 | 停止 CB 逻辑复杂度堆砌 | Sharpe 天花板由因子质量决定，非风控层可突破 |
+| 2026-05-28 | _apply_slippage 忽略 boolean limit_up/down | market_data 的 limit_up/down 是 bool 标志，不是价格 |
+
+---
+
+## Phase 12: Drawdown Circuit Breaker ✅ 完成
+
+### 目标
+实现基于回撤的非对称仓位压缩断路器，降低系统性大回撤（MaxDD），同时保持牛市进攻火力。
+
+### 设计理念
+Phase 8 的教训：用宏观 regime 做策略路由失败（踏空 +24% 暴跌中避险成功，但 -24% 暴涨中踏空）。方案 A 的核心是**不做策略切换，只做仓位压缩**：
+- 正常市场：满额暴露（exposure=1.0），策略完全不受干扰
+- 回撤触发：渐进压缩仓位（exposure 降到 min_exposure），保留底仓避免完全踏空
+- 恢复滞后（hysteresis）：触发阈值比恢复阈值更严，避免震荡触发
+
+### Task 1: DrawdownCircuitBreaker 实现（TDD）✅
+
+**文件**：`src/portfolio/circuit_breaker.py`
+
+**类**：`DrawdownCircuitBreaker`
+- `threshold`：触发阈值（如 -0.15 = -15% 回撤）
+- `recovery_threshold`：恢复阈值（如 -0.05 = -5%），比触发阈值更浅
+- `min_exposure`：最小暴露度（如 0.1 = 10%）
+- `ramp_speed`：恢复曲线曲率（默认 2.0，幂函数插值）
+- `compute_exposure(equity)`：从净值曲线计算每日 exposure
+- `_drawdown_to_exposure(dd)`：drawdown → exposure 映射函数
+- `reset()`：重置内部状态（engine 每次 run 调用）
+
+**暴露度映射**：
+```
+drawdown >= recovery_threshold  →  exposure = 1.0（满额）
+drawdown <= threshold           →  exposure = min_exposure（最小）
+中间区域                         →  幂函数插值（渐进过渡）
+```
+
+- 测试通过（18 tests）
+
+### Task 2: BacktestEngine 集成 ✅
+
+**架构决策**：CB 放在 BacktestEngine 内部而非 walk_forward 层。
+
+原因：walk-forward 每个 period 用 `initial_capital` 重新开始，如果 CB 在 walk_forward 层监控跨 period 净值，新 period 起始净值低于上一个 period 的 peak，会立刻触发伪回撤。
+
+**Engine 改动**（`src/backtest/engine.py`）：
+- [x] `__init__` 新增 `circuit_breaker` 参数
+- [x] 日循环开始时：用 `_prev_equity`（昨日净值）计算 drawdown，得到 exposure
+- [x] exposure < 1.0 时：按比例压缩 target shares
+- [x] 卖出逻辑增强：从"不在 target 则卖"改为"持有超过 target 则卖"（支持 CB 压缩后减仓）
+- [x] 日循环结束时：更新 `_prev_equity`
+- [x] `run()` 开头：`circuit_breaker.reset()`（每个 period 独立）
+
+**卖出逻辑重构**：
+原逻辑：`if code not in target → sell all`
+新逻辑：`if holdings[code] > target[code] → sell excess`
+- target=0 且 holding>0 → action="sell"（完全清仓）
+- target>0 且 holding>target → action="cb_compress"（CB 压缩减仓）
+
+### Task 3: walk_forward 集成 ✅
+
+**改动**（`src/backtest/walk_forward.py`）：
+- [x] `walk_forward_backtest` 新增 `circuit_breaker` 参数
+- [x] 透传到 `BacktestEngine(circuit_breaker=circuit_breaker)`
+- [x] 移除旧的 `exposure_fn` CB 集成（CB 现在在 engine 内部）
+
+### 回测结果
+
+**配置**：CSI 300（100 stocks），2023-01 ~ 2026-05，walk-forward 12m/3m
+**策略**：50% gtja_momentum + 50% reversed_gtja_vwap（定版配置）
+**止损**：-15%
+
+| 配置 | Cumulative | MaxDD | Sharpe | CB wins |
+|------|-----------|-------|--------|---------|
+| Baseline | 149.7% | 9.9% | 0.34 | — |
+| CB threshold=-0.15 | 143.2% | 8.6% | 0.07 | — |
+| CB threshold=-0.10 | 121.6% | 7.4% | -0.08 | 16/35 |
+| CB threshold=-0.08 | 108.1% | 6.6% | -0.14 | — |
+
+**Per-period 亮点（CB -0.10 vs Baseline）**：
+- Period 34（最大回撤期）：Baseline -22.2% vs CB -9.9%（避险 +12.3%）
+- Period 24：Baseline -1.2% vs CB +7.2%（反转 +8.4%）
+- Period 29：Baseline -8.8% vs CB -3.8%（避险 +5.0%）
+- Period 11（暴涨期）：Baseline +36.0% vs CB +21.7%（踏空 -14.3%）
+
+### 测试统计
+- 新增测试：18 (circuit_breaker) + 4 (engine CB) + 3 (walk_forward CB) = 25 tests
+- 总测试数：685 tests
+
+### 关键发现
+
+1. **CB 有效降低 MaxDD**：threshold=-0.08 降 33%，-0.10 降 25%，-0.15 降 13%
+2. **代价是收益压缩**：CB 在坏行情避险（16 periods），但也在好行情踏空（19 periods）
+3. **Walk-forward 结构限制**：每个 period 从 initial_capital 重新开始，CB 只能监控单 period 内 drawdown（63 天窗口），无法捕获跨 period 持续回撤
+4. **非对称设计验证**：CB 在 period 34（-22.2% → -9.9%）展示了 Phase 8 中验证过的避险能力
+5. **Sharpe 未提升**：CB 压缩了收益波动但没有提升风险调整后收益，说明在当前框架下避险收益 < 踏空损失
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-05-28 | CB 放 portfolio 层而非 risk 层 | 输出是 exposure Series，直接对接 allocator；不改 RuleContext |
+| 2026-05-28 | CB 在 engine 内部而非 walk_forward 层 | walk-forward 跨 period 净值不连续，会触发伪回撤 |
+| 2026-05-28 | 每个 period 独立 reset | walk-forward 每 period 重新开始，CB 应监控单 period 内 drawdown |
+| 2026-05-28 | 卖出逻辑从"不在 target"改为"超过 target" | 支持 CB 压缩后按比例减仓，而非只能完全清仓 |

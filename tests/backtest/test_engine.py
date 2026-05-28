@@ -849,3 +849,79 @@ class TestTradingCost:
         assert result["metrics"]["total_cost"] == pytest.approx(
             result["trades"]["cost"].sum(), abs=1e-6
         )
+
+
+class TestCircuitBreaker:
+    """Test drawdown circuit breaker integration in engine."""
+
+    def _make_data(self, prices_list):
+        """Create positions and prices for a simple buy-and-hold."""
+        n = len(prices_list)
+        dates = pd.bdate_range("2023-01-01", periods=n)
+        positions = pd.DataFrame({
+            "date": dates,
+            "code": ["000001"] * n,
+            "weight": [1.0] * n,
+            "shares": [10000] * n,
+        })
+        prices = pd.DataFrame({
+            "date": dates,
+            "code": ["000001"] * n,
+            "close": prices_list,
+        })
+        return positions, prices
+
+    def test_no_compression_when_no_drawdown(self):
+        """Circuit breaker does nothing when equity rises."""
+        from src.portfolio.circuit_breaker import DrawdownCircuitBreaker
+
+        cb = DrawdownCircuitBreaker(threshold=-0.10, recovery_threshold=-0.03)
+        positions, prices = self._make_data([100, 101, 102, 103])
+        engine = BacktestEngine(capital=1_000_000, circuit_breaker=cb)
+        result = engine.run(positions, prices)
+
+        # No CB sells when equity rises
+        cb_sells = result["trades"][result["trades"]["action"] == "cb_compress"]
+        assert len(cb_sells) == 0
+
+    def test_compression_on_drawdown(self):
+        """Circuit breaker reduces positions during drawdown."""
+        from src.portfolio.circuit_breaker import DrawdownCircuitBreaker
+
+        cb = DrawdownCircuitBreaker(threshold=-0.10, recovery_threshold=-0.03)
+        # Price drops 20% -> drawdown triggers CB
+        positions, prices = self._make_data([100, 90, 80, 75, 70])
+        engine = BacktestEngine(capital=1_000_000, circuit_breaker=cb)
+        result = engine.run(positions, prices)
+
+        # Should have sell trades from CB compression
+        cb_sells = result["trades"][result["trades"]["action"] == "cb_compress"]
+        assert len(cb_sells) > 0
+
+    def test_no_cb_when_none(self):
+        """No circuit breaker means no extra sells."""
+        positions, prices = self._make_data([100, 90, 80, 75, 70])
+        engine = BacktestEngine(capital=1_000_000, circuit_breaker=None)
+        result = engine.run(positions, prices)
+
+        cb_sells = result["trades"][result["trades"]["action"] == "cb_compress"]
+        assert len(cb_sells) == 0
+
+    def test_cb_resets_each_run(self):
+        """Circuit breaker resets at start of each engine.run()."""
+        from src.portfolio.circuit_breaker import DrawdownCircuitBreaker
+
+        cb = DrawdownCircuitBreaker(threshold=-0.10, recovery_threshold=-0.03)
+
+        # First run: drawdown
+        positions1, prices1 = self._make_data([100, 90, 80])
+        engine1 = BacktestEngine(capital=1_000_000, circuit_breaker=cb)
+        engine1.run(positions1, prices1)
+
+        # Second run: no drawdown - CB should be reset
+        positions2, prices2 = self._make_data([100, 101, 102])
+        engine2 = BacktestEngine(capital=1_000_000, circuit_breaker=cb)
+        result2 = engine2.run(positions2, prices2)
+
+        cb_sells = result2["trades"][result2["trades"]["action"] == "cb_compress"]
+        assert len(cb_sells) == 0

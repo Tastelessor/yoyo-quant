@@ -74,6 +74,7 @@ def walk_forward_backtest(
     take_profit: float | None = None,
     atr_stop_loss: dict | None = None,
     trading_cost: TradingCost | None = None,
+    circuit_breaker: object | None = None,
 ) -> pd.DataFrame:
     """Run walk-forward backtest with rolling train/test windows.
 
@@ -114,6 +115,9 @@ def walk_forward_backtest(
         None to disable.
     trading_cost : TradingCost | None
         Trading friction parameters. None disables all friction.
+    circuit_breaker : DrawdownCircuitBreaker | None
+        If provided, monitors equity curve across periods and compresses
+        exposure during drawdowns. Overrides ``exposure_fn`` when set.
 
     Returns
     -------
@@ -210,6 +214,7 @@ def walk_forward_backtest(
             take_profit=take_profit,
             atr_stop_loss=atr_stop_loss,
             trading_cost=trading_cost,
+            circuit_breaker=circuit_breaker,
         )
         result = engine.run(positions, prices, market_data=data)
         m = result["metrics"]

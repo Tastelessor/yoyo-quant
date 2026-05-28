@@ -74,6 +74,7 @@ class BacktestEngine:
         take_profit: float | None = None,
         atr_stop_loss: dict | None = None,
         trading_cost: TradingCost | None = None,
+        circuit_breaker: object | None = None,
     ):
         self.initial_capital = capital
         self.cash = capital
@@ -81,19 +82,24 @@ class BacktestEngine:
         self.take_profit = take_profit
         self.atr_stop_loss = atr_stop_loss
         self.trading_cost = trading_cost
+        self.circuit_breaker = circuit_breaker
 
     def _apply_slippage(
         self, price: float, is_sell: bool,
         limit_up: float | None = None, limit_down: float | None = None,
     ) -> float:
-        """Adjust execution price by slippage ticks, clipped to limit prices."""
+        """Adjust execution price by slippage ticks, clipped to limit prices.
+
+        Note: limit_up/limit_down are expected to be float prices or None.
+        Boolean values (from market data flags) are ignored.
+        """
         if self.trading_cost is None or self.trading_cost.slippage_ticks == 0:
             return price
         delta = self.trading_cost.slippage_ticks * 0.01
         exec_price = price - delta if is_sell else price + delta
-        if not is_sell and limit_up is not None:
+        if not is_sell and isinstance(limit_up, (int, float)) and not isinstance(limit_up, bool):
             exec_price = min(exec_price, limit_up)
-        if is_sell and limit_down is not None:
+        if is_sell and isinstance(limit_down, (int, float)) and not isinstance(limit_down, bool):
             exec_price = max(exec_price, limit_down)
         return exec_price
 
@@ -140,6 +146,11 @@ class BacktestEngine:
         entry_prices: dict[str, float] = {}  # code -> buy price
         trades = []
         equity_rows = []
+        _prev_equity: float = self.initial_capital  # for circuit breaker
+        _equity_history: list[float] = [self.initial_capital]  # for momentum
+        _active_exposure: float = 1.0  # current applied exposure
+        if self.circuit_breaker is not None:
+            self.circuit_breaker.reset()
 
         all_dates = sorted(prices["date"].unique())
         price_map = prices.set_index(["date", "code"])["close"].to_dict()
@@ -207,6 +218,28 @@ class BacktestEngine:
                 if shares > 0
             }
 
+            # Circuit breaker: scale target based on yesterday's drawdown
+            if self.circuit_breaker is not None and _prev_equity > 0:
+                cb = self.circuit_breaker
+                peak = max(_prev_equity, cb._peak)
+                cb._peak = peak
+                dd = (_prev_equity - peak) / peak
+                new_exposure = cb._drawdown_to_exposure(dd)
+
+                # Fast recovery: momentum quench bypasses hysteresis
+                if cb.check_fast_recovery(_equity_history):
+                    new_exposure = 1.0
+
+                # Dead-zone: only adjust if change is significant
+                if abs(new_exposure - _active_exposure) > cb.dead_zone:
+                    _active_exposure = new_exposure
+
+                if _active_exposure < 1.0:
+                    target = {
+                        code: int(shares * _active_exposure)
+                        for code, shares in target.items()
+                    }
+
             # Stop-loss / take-profit on existing holdings
             for code in list(holdings):
                 price = day_prices.get(code)
@@ -260,29 +293,38 @@ class BacktestEngine:
                         "pnl": pnl, "cost": sell_fees,
                     })
 
-            # Sell positions not in target
+            # Sell positions not in target or over target (CB compression)
             for code in list(holdings):
-                if code not in target:
-                    price = day_prices.get(code)
-                    if price is None or (isinstance(price, float) and np.isnan(price)):
-                        continue
-                    shares = holdings.pop(code)
-                    limits = day_limits.get(code, {})
-                    exec_price = self._apply_slippage(
-                        price, is_sell=True,
-                        limit_up=limits.get("limit_up"),
-                        limit_down=limits.get("limit_down"),
-                    )
-                    sell_amount = shares * exec_price
-                    sell_fees = self._calc_cost(sell_amount, is_sell=True)
-                    self.cash += sell_amount - sell_fees
-                    ep = entry_prices.pop(code, price)
-                    pnl = shares * (exec_price - ep) - sell_fees
-                    trades.append({
-                        "date": date, "code": code, "action": "sell",
-                        "price": exec_price, "shares": shares,
-                        "pnl": pnl, "cost": sell_fees,
-                    })
+                target_shares = target.get(code, 0)
+                held_shares = holdings[code]
+                excess = held_shares - target_shares
+                if excess <= 0:
+                    continue
+                price = day_prices.get(code)
+                if price is None or (isinstance(price, float) and np.isnan(price)):
+                    continue
+                limits = day_limits.get(code, {})
+                exec_price = self._apply_slippage(
+                    price, is_sell=True,
+                    limit_up=limits.get("limit_up"),
+                    limit_down=limits.get("limit_down"),
+                )
+                sell_amount = excess * exec_price
+                sell_fees = self._calc_cost(sell_amount, is_sell=True)
+                self.cash += sell_amount - sell_fees
+                ep = entry_prices.get(code, price)
+                pnl = excess * (exec_price - ep) - sell_fees
+                action = "sell" if target_shares == 0 else "cb_compress"
+                trades.append({
+                    "date": date, "code": code, "action": action,
+                    "price": exec_price, "shares": excess,
+                    "pnl": pnl, "cost": sell_fees,
+                })
+                if target_shares == 0:
+                    holdings.pop(code)
+                    entry_prices.pop(code, None)
+                else:
+                    holdings[code] = target_shares
 
             # Buy positions not in holdings (skip stocks stopped today)
             for code, target_shares in target.items():
@@ -346,6 +388,8 @@ class BacktestEngine:
                 "date": date, "equity": equity, "cash": self.cash,
                 "position_value": pos_value, "returns": 0.0,
             })
+            _prev_equity = equity
+            _equity_history.append(equity)
 
         cols_t = ["date", "code", "action", "price", "shares", "pnl", "cost"]
         cols_eq = ["date", "equity", "cash", "position_value", "returns"]

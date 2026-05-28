@@ -42,6 +42,8 @@
 | strategies (反转包装器) | ✅ 完成 | reversed.py: ReversedStrategy |
 | strategies (市场状态) | ✅ 完成 | builtin/market_regime.py: MA 交叉仓位暴露 + 15 tests |
 | portfolio (equal weight) | ✅ 完成 | allocator.py + 9 tests |
+| portfolio (circuit breaker) | ✅ 完成 | DrawdownCircuitBreaker: 回撤触发仓位压缩 + dead-zone + fast recovery + 22 tests |
+| backtest (slippage 修复) | ✅ 完成 | _apply_slippage 忽略 boolean limit_up/down，防止 min(price,False)=0 |
 | risk (position limit) | ✅ 完成 | position_limit.py + 14 tests |
 | risk (规则引擎) | ✅ 完成 | Rule ABC + RuleEngine + 15 tests |
 | risk (止损) | ✅ 重构 | 止损逻辑已迁移到 BacktestEngine，Risk 层仅保留截面过滤规则 |
@@ -64,7 +66,7 @@
 | risk (止盈规则) | ✅ 重构 | 已迁移到 BacktestEngine（与止损统一管理） |
 | execution | 🔲 未开始 | 统一下单接口 |
 
-**测试总计**：677 tests（47 个测试文件）
+**测试总计**：685 tests（50 个测试文件）
 
 ## 目录结构
 
@@ -126,6 +128,10 @@ src/
 │       └── trend_gtja.py
 ├── backtest/
 ├── portfolio/
+│   ├── allocator.py               # equal_weight + exposure scaling
+│   ├── circuit_breaker.py         # DrawdownCircuitBreaker: 回撤断路器
+│   ├── industry_cap.py            # 行业上限约束
+│   └── industry_momentum.py       # 行业动量
 ├── visualization/
 └── execution/
 configs/
@@ -162,8 +168,8 @@ configs/
 
 ### 现状诊断
 
-当前 full-period 回测天花板：Sharpe 0.56, 年化 12.6%, MaxDD 22.5%（mean_reversion 单类别）。
-加 regime 避险后：Sharpe 0.66, 年化 10.8%, MaxDD 19.1%。Calmar 0.57——不算好。
+定版配置（50% momentum + 50% reversed_vwap）10 年全周期回测：
+- **Sharpe 0.611, 年化 12.54%, MaxDD -33.4%, Cumulative 211.9%**
 
 瓶颈不在 context 层，在**信号层**。因子质量决定了信息比率上限，context 只能在这个上限内做风险预算。
 
@@ -183,6 +189,7 @@ configs/
 | C | ~~CSI 500 中盘扩展~~ | 数据层 | **已验证无效** | CSI 500 平均 Sharpe 0.23 vs CSI 300 的 0.44 |
 | E | ~~全市场 + stock_selector~~ | 数据层 | **已验证无效** | stock_selector 质量过滤无正向价值。可投池（市值>200亿，844只）Sharpe 0.43 已是最优 |
 | F | **小止盈大止损** | 风控层 | **已实现但不适用** | SL/TP 对均值回归有害（割肉+截断利润），适合趋势策略 |
+| G | ~~DrawdownCircuitBreaker~~ | 风控层 | **已验证** | MaxDD 降 5.6pp（-33.4%→-27.8%），但 Sharpe 降 0.076。阈值锁 -0.35 作安全底线 |
 | D | Execution 模块 | 基础层 | 待做 | 统一下单接口 |
 
 ### Direction C 验证结果（2026-05-27）
