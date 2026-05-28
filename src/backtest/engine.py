@@ -21,6 +21,10 @@ class BacktestEngine:
         Stop-loss threshold (e.g. -0.15 for -15%). None to disable.
     take_profit : float | None
         Take-profit threshold (e.g. 0.05 for +5%). None to disable.
+    atr_stop_loss : dict | None
+        ATR-based dynamic stop-loss config with keys
+        ``atr_multiplier`` (float, default 3.0) and ``atr_window``
+        (int, default 14).  None to disable.
 
     Data flow: signals -> portfolio -> risk -> BacktestEngine -> visualization
     """
@@ -30,16 +34,19 @@ class BacktestEngine:
         capital: float = 1_000_000,
         stop_loss: float | None = None,
         take_profit: float | None = None,
+        atr_stop_loss: dict | None = None,
     ):
         self.initial_capital = capital
         self.cash = capital
         self.stop_loss = stop_loss
         self.take_profit = take_profit
+        self.atr_stop_loss = atr_stop_loss
 
     def run(
         self,
         positions: pd.DataFrame,
         prices: pd.DataFrame,
+        market_data: pd.DataFrame | None = None,
     ) -> dict:
         """Run backtest on pre-allocated positions.
 
@@ -50,6 +57,9 @@ class BacktestEngine:
             Output of portfolio.allocator + risk.position_limit.
         prices : DataFrame
             Price data (date, code, close).
+        market_data : DataFrame | None
+            Full OHLCV data (date, code, open, high, low, close, volume).
+            Required when ``atr_stop_loss`` is enabled.
 
         Returns
         -------
@@ -65,11 +75,34 @@ class BacktestEngine:
         all_dates = sorted(prices["date"].unique())
         price_map = prices.set_index(["date", "code"])["close"].to_dict()
 
+        # Pre-compute ATR for all (date, code) pairs
+        atr_map: dict[tuple, float] = {}
+        if self.atr_stop_loss is not None:
+            if market_data is None:
+                raise ValueError(
+                    "atr_stop_loss requires market_data (OHLCV) to be passed to run()"
+                )
+            from src.factors.volume_price import calc_atr
+
+            window = self.atr_stop_loss.get("atr_window", 14)
+            # calc_atr sorts internally by ["code", "date"], so we must
+            # align our key construction to that same order.
+            sorted_md = market_data.sort_values(
+                ["code", "date"]
+            ).reset_index(drop=True)
+            atr_series = calc_atr(sorted_md, window=window)
+            atr_map = dict(zip(
+                zip(sorted_md["date"], sorted_md["code"]),
+                atr_series.values,
+            ))
+
         pos_cols = ["date", "code", "weight", "shares"]
         if positions.empty:
             positions = pd.DataFrame(columns=pos_cols)
 
         for date in all_dates:
+            stopped_today: set[str] = set()
+
             day_pos = positions[positions["date"] == date]
             day_prices = {
                 code: price_map[(date, code)]
@@ -84,32 +117,48 @@ class BacktestEngine:
             }
 
             # Stop-loss / take-profit on existing holdings
-            if self.stop_loss is not None or self.take_profit is not None:
-                for code in list(holdings):
-                    price = day_prices.get(code)
-                    if price is None or (isinstance(price, float) and np.isnan(price)):
-                        continue
-                    ep = entry_prices.get(code, price)
-                    pnl_pct = (price - ep) / ep if ep > 0 else 0.0
+            for code in list(holdings):
+                price = day_prices.get(code)
+                if price is None or (isinstance(price, float) and np.isnan(price)):
+                    continue
+                ep = entry_prices.get(code, price)
+                pnl_pct = (price - ep) / ep if ep > 0 else 0.0
 
-                    triggered = False
-                    reason = ""
-                    if self.stop_loss is not None and pnl_pct < self.stop_loss:
+                triggered = False
+                reason = ""
+
+                # ATR-based stop-loss (check first, takes priority)
+                if self.atr_stop_loss is not None:
+                    atr = atr_map.get((date, code))
+                    if atr is not None and not np.isnan(atr) and ep > 0:
+                        multiplier = self.atr_stop_loss.get("atr_multiplier", 3.0)
+                        stop_price = ep - multiplier * atr
+                        if price < stop_price:
+                            triggered = True
+                            reason = "atr_stop_loss"
+
+                # Fixed stop-loss (independent of ATR config)
+                if not triggered and self.stop_loss is not None:
+                    if pnl_pct < self.stop_loss:
                         triggered = True
                         reason = "stop_loss"
-                    elif self.take_profit is not None and pnl_pct > self.take_profit:
+
+                # Fixed take-profit (only if neither stop triggered)
+                if not triggered and self.take_profit is not None:
+                    if pnl_pct > self.take_profit:
                         triggered = True
                         reason = "take_profit"
 
-                    if triggered:
-                        shares = holdings.pop(code)
-                        self.cash += shares * price
-                        entry_prices.pop(code)
-                        pnl = shares * (price - ep)
-                        trades.append({
-                            "date": date, "code": code, "action": reason,
-                            "price": price, "shares": shares, "pnl": pnl,
-                        })
+                if triggered:
+                    shares = holdings.pop(code)
+                    self.cash += shares * price
+                    entry_prices.pop(code, None)
+                    stopped_today.add(code)
+                    pnl = shares * (price - ep)
+                    trades.append({
+                        "date": date, "code": code, "action": reason,
+                        "price": price, "shares": shares, "pnl": pnl,
+                    })
 
             # Sell positions not in target
             for code in list(holdings):
@@ -126,9 +175,9 @@ class BacktestEngine:
                         "price": price, "shares": shares, "pnl": pnl,
                     })
 
-            # Buy positions not in holdings
+            # Buy positions not in holdings (skip stocks stopped today)
             for code, target_shares in target.items():
-                if code not in holdings:
+                if code not in holdings and code not in stopped_today:
                     price = day_prices.get(code)
                     if price is None or (isinstance(price, float) and np.isnan(price)):
                         continue
@@ -197,7 +246,8 @@ class BacktestEngine:
         drawdown = (equity - peak) / np.where(peak > 0, peak, 1)
         max_drawdown = abs(drawdown.min())
 
-        sell_trades = trades[trades["action"] == "sell"]
+        exit_actions = ["sell", "stop_loss", "take_profit", "atr_stop_loss"]
+        sell_trades = trades[trades["action"].isin(exit_actions)]
         if len(sell_trades) > 0:
             win_rate = (sell_trades["pnl"] > 0).mean()
         else:

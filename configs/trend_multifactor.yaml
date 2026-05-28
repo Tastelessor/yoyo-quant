@@ -63,10 +63,11 @@ strategies:
         bottom_n: 3
       weight: 1.0
 
+backtest:
+  stop_loss: -0.08
+
 risk:
   rules:
-    - name: fixed_stop_loss
-      params: { threshold: -0.08 }
     - name: position_limit
       params: { max_weight: 0.3 }
     - name: tradability

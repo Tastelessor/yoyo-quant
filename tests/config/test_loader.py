@@ -9,6 +9,7 @@ import yaml
 import pandas as pd
 
 from src.config.loader import (
+    build_backtest_config,
     build_regime_switch,
     build_risk_engine,
     build_stock_selector,
@@ -33,7 +34,6 @@ def valid_config():
         },
         "risk": {
             "rules": [
-                {"name": "fixed_stop_loss", "params": {"threshold": -0.08}},
                 {"name": "position_limit", "params": {"max_weight": 0.3}},
                 {"name": "tradability"},
                 {"name": "t1"},
@@ -55,7 +55,7 @@ class TestLoadConfig:
         cfg = load_config(valid_yaml_file)
         assert cfg["portfolio"]["capital"] == 1_000_000
         assert len(cfg["strategies"]["rules"]) == 2
-        assert len(cfg["risk"]["rules"]) == 4
+        assert len(cfg["risk"]["rules"]) == 3
 
     def test_load_nonexistent_raises(self):
         with pytest.raises(FileNotFoundError):
@@ -114,7 +114,7 @@ class TestBuildRiskEngine:
     def test_builds_engine(self, valid_config):
         result = build_risk_engine(valid_config["risk"])
         assert isinstance(result, RuleEngine)
-        assert len(result.rules) == 4
+        assert len(result.rules) == 3
 
     def test_rules_sorted_by_priority(self, valid_config):
         engine = build_risk_engine(valid_config["risk"])
@@ -320,3 +320,32 @@ class TestBuildStockSelector:
         cfg = {"stock_selector": {"factors": ["calc_money_flow_6d"], "min_pass_count": 3}}
         fn = build_stock_selector(cfg)
         assert fn is not None
+
+
+class TestBuildBacktestConfig:
+    def test_returns_stop_loss_and_take_profit(self):
+        cfg = {"backtest": {"stop_loss": -0.15, "take_profit": 0.05}}
+        result = build_backtest_config(cfg)
+        assert result["stop_loss"] == -0.15
+        assert result["take_profit"] == 0.05
+
+    def test_returns_atr_stop_loss(self):
+        cfg = {
+            "backtest": {
+                "atr_stop_loss": {"atr_multiplier": 3.0, "atr_window": 14},
+            }
+        }
+        result = build_backtest_config(cfg)
+        assert result["atr_stop_loss"]["atr_multiplier"] == 3.0
+        assert result["atr_stop_loss"]["atr_window"] == 14
+
+    def test_empty_when_no_backtest_section(self):
+        cfg = {"risk": {"rules": []}}
+        result = build_backtest_config(cfg)
+        assert result == {}
+
+    def test_partial_config(self):
+        cfg = {"backtest": {"stop_loss": -0.10}}
+        result = build_backtest_config(cfg)
+        assert result == {"stop_loss": -0.10}
+        assert "take_profit" not in result

@@ -51,7 +51,6 @@
 | code | str | 股票代码 |
 | weight | float64 | 目标权重 0-1 |
 | shares | int | 目标股数 |
-| avg_cost | float64 | 持仓均价（可选，止损规则使用） |
 
 ## 风控 — risk 模块输出
 
@@ -82,7 +81,7 @@
 |------|------|------|
 | date | datetime64 | 日期 |
 | code | str | 股票代码 |
-| action | str | buy/sell/hold |
+| action | str | buy/sell/stop_loss/take_profit/atr_stop_loss |
 | price | float64 | 成交价 |
 | shares | int | 成交股数 |
 | pnl | float64 | 盈亏 |

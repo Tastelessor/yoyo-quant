@@ -26,12 +26,8 @@ def list_risk_rules() -> list[str]:
 # Auto-register built-in rules
 def _register_defaults() -> None:
     from src.risk.position_limit import PositionLimitRule
-    from src.risk.stop_loss import ATRStopLossRule, FixedStopLossRule, FixedTakeProfitRule
     from src.risk.tradability import T1Rule, TradabilityRule
 
-    register_risk_rule("fixed_stop_loss", FixedStopLossRule)
-    register_risk_rule("fixed_take_profit", FixedTakeProfitRule)
-    register_risk_rule("atr_stop_loss", ATRStopLossRule)
     register_risk_rule("position_limit", PositionLimitRule)
     register_risk_rule("tradability", TradabilityRule)
     register_risk_rule("t1", T1Rule)

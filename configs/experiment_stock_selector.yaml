@@ -55,10 +55,11 @@ strategies:
       params: { window: 14, oversold: 30, overbought: 70 }
       weight: 0.5
 
+backtest:
+  stop_loss: -0.15
+
 risk:
   rules:
-    - name: fixed_stop_loss
-      params: { threshold: -0.15 }
     - name: position_limit
       params: { max_weight: 0.1 }
     - name: tradability

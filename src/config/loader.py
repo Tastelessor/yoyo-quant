@@ -75,6 +75,34 @@ def build_strategies(cfg: dict) -> Strategy | WeightedVoteCombiner | FilterCombi
         raise ValueError(f"Unknown combiner type: {ctype!r}")
 
 
+def build_backtest_config(cfg: dict) -> dict:
+    """Extract backtest engine parameters from config.
+
+    Config format::
+
+        backtest:
+            stop_loss: -0.15
+            take_profit: 0.05
+            atr_stop_loss:
+                atr_multiplier: 3.0
+                atr_window: 14
+
+    Returns
+    -------
+    dict
+        Keys: stop_loss, take_profit, atr_stop_loss (all optional).
+    """
+    bt_cfg = cfg.get("backtest", {})
+    result = {}
+    if "stop_loss" in bt_cfg:
+        result["stop_loss"] = bt_cfg["stop_loss"]
+    if "take_profit" in bt_cfg:
+        result["take_profit"] = bt_cfg["take_profit"]
+    if "atr_stop_loss" in bt_cfg:
+        result["atr_stop_loss"] = bt_cfg["atr_stop_loss"]
+    return result
+
+
 def build_risk_engine(cfg: dict) -> RuleEngine:
     """Build RuleEngine from config.
 

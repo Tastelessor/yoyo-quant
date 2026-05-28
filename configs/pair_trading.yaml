@@ -59,10 +59,11 @@ strategies:
         beta_method: "ols"
       weight: 1.0
 
+backtest:
+  stop_loss: -0.08
+
 risk:
   rules:
-    - name: fixed_stop_loss
-      params: { threshold: -0.08 }
     - name: position_limit
       params: { max_weight: 0.3 }
     - name: tradability

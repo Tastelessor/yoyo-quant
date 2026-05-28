@@ -70,6 +70,9 @@ def walk_forward_backtest(
     stock_selector_fn: Callable[[pd.DataFrame], dict] | None = None,
     industry_map: dict[str, str] | None = None,
     max_industry_weight: float = 0.30,
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+    atr_stop_loss: dict | None = None,
 ) -> pd.DataFrame:
     """Run walk-forward backtest with rolling train/test windows.
 
@@ -101,6 +104,13 @@ def walk_forward_backtest(
         per-industry weight cap after equal-weight allocation.
     max_industry_weight : float
         Maximum weight per industry. Default 0.30 (30%).
+    stop_loss : float | None
+        Stop-loss threshold (e.g. -0.15). None to disable.
+    take_profit : float | None
+        Take-profit threshold (e.g. 0.05). None to disable.
+    atr_stop_loss : dict | None
+        ATR stop-loss config with keys ``atr_multiplier`` and ``atr_window``.
+        None to disable.
 
     Returns
     -------
@@ -191,8 +201,13 @@ def walk_forward_backtest(
         positions = apply_position_limit(positions, max_weight=max_weight)
 
         # Run backtest
-        engine = BacktestEngine(capital=capital)
-        result = engine.run(positions, prices)
+        engine = BacktestEngine(
+            capital=capital,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            atr_stop_loss=atr_stop_loss,
+        )
+        result = engine.run(positions, prices, market_data=data)
         m = result["metrics"]
 
         results.append({
