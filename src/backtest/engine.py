@@ -169,28 +169,37 @@ class BacktestEngine:
         if positions.empty:
             positions = pd.DataFrame(columns=pos_cols)
 
+        # Pre-group by date to avoid O(N) full-table scans inside daily loop
+        pos_by_date = {
+            d: g for d, g in positions.groupby("date")
+        }
+        codes_by_date = {
+            d: g["code"].tolist()
+            for d, g in prices.groupby("date")
+        }
+        md_by_date: dict = {}
+        if market_data is not None:
+            if ("limit_up" in market_data.columns
+                    and "limit_down" in market_data.columns):
+                for d, g in market_data.groupby("date"):
+                    md_by_date[d] = g.set_index("code")[
+                        ["limit_up", "limit_down"]
+                    ].to_dict(orient="index")
+            else:
+                md_by_date = {}
+
         for date in all_dates:
             stopped_today: set[str] = set()
 
-            day_pos = positions[positions["date"] == date]
+            day_pos = pos_by_date.get(date, pd.DataFrame(columns=pos_cols))
             day_prices = {
                 code: price_map[(date, code)]
-                for code in prices[prices["date"] == date]["code"]
+                for code in codes_by_date.get(date, [])
                 if (date, code) in price_map
             }
 
-            # Build daily limit price lookup (O(1) per code)
-            if market_data is not None:
-                day_data = market_data[market_data["date"] == date]
-                if ("limit_up" in day_data.columns
-                        and "limit_down" in day_data.columns):
-                    day_limits = day_data.set_index("code")[
-                        ["limit_up", "limit_down"]
-                    ].to_dict(orient="index")
-                else:
-                    day_limits = {}
-            else:
-                day_limits = {}
+            # Daily limit price lookup (O(1) per code)
+            day_limits = md_by_date.get(date, {})
 
             target = {
                 code: shares
