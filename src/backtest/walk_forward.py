@@ -292,9 +292,9 @@ def walk_forward_backtest(
             test_dates = pd.DatetimeIndex(sorted(test_data["date"].unique()))
             exposure = exposure_fn(test_dates)
 
-        # Allocate positions
+        # Allocate positions using running capital (chained from previous period)
         prices = test_data[["date", "code", "close"]].drop_duplicates()
-        positions = equal_weight(signals, prices, capital=capital, exposure=exposure)
+        positions = equal_weight(signals, prices, capital=running_capital, exposure=exposure)
 
         # Position smoothing (dead-zone state machine)
         if dead_zone > 0:
@@ -315,7 +315,7 @@ def walk_forward_backtest(
 
             positions = smooth_positions(
                 positions, prev_positions, smooth_prices,
-                capital=capital, exposure=exposure, dead_zone=dead_zone,
+                capital=running_capital, exposure=exposure, dead_zone=dead_zone,
             )
         prev_positions = positions.copy()
 
@@ -332,7 +332,7 @@ def walk_forward_backtest(
 
         # Run backtest with chained capital
         engine = BacktestEngine(
-            capital=capital,
+            capital=running_capital,
             stop_loss=stop_loss,
             take_profit=take_profit,
             atr_stop_loss=atr_stop_loss,
@@ -570,13 +570,13 @@ def walk_forward_multi_silo(
 
         prices = test_data[["date", "code", "close"]].drop_duplicates()
 
-        # Run each silo independently
+        # Run each silo independently using running capital
         silo_positions_list = []
         for j, silo in enumerate(silos):
-            silo_capital = capital * silo["weight"]
+            silo_capital = running_capital * silo["weight"]
             pos, new_prev = _run_silo_pipeline(
                 test_data, silo["signal_fn"], train_data,
-                capital, exposure, dead_zone,
+                running_capital, exposure, dead_zone,
                 silo_prev_positions[j], data, silo_capital,
             )
             silo_positions_list.append(pos)
@@ -584,7 +584,7 @@ def walk_forward_multi_silo(
 
         # Merge silos at weight level
         positions = _merge_silo_positions(
-            silo_positions_list, silo_weight_fractions, prices, capital, exposure,
+            silo_positions_list, silo_weight_fractions, prices, running_capital, exposure,
         )
 
         if positions.empty:
@@ -609,7 +609,7 @@ def walk_forward_multi_silo(
 
         # Run single backtest engine with chained capital
         engine = BacktestEngine(
-            capital=capital,
+            capital=running_capital,
             stop_loss=stop_loss,
             take_profit=take_profit,
             atr_stop_loss=atr_stop_loss,
