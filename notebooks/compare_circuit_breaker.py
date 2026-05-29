@@ -54,22 +54,25 @@ def run_experiment(data, signal_fn, label, circuit_breaker=None):
     )
     elapsed = time.time() - t0
 
-    if result.empty:
-        return {"label": label, "periods": 0, "elapsed": elapsed}, result
+    pp = result["per_period"]
+    ov = result["overall"]
+
+    if pp.empty:
+        return {"label": label, "periods": 0, "elapsed": elapsed}, pp
 
     summary = {
         "label": label,
-        "periods": len(result),
-        "total_return": result["total_return"].mean(),
-        "annual_return": result["annual_return"].mean(),
-        "sharpe_ratio": result["sharpe_ratio"].mean(),
-        "max_drawdown": result["max_drawdown"].mean(),
-        "win_rate": result["win_rate"].mean(),
-        "trade_count": result["trade_count"].mean(),
-        "cumulative": (1 + result["total_return"]).prod() - 1,
+        "periods": len(pp),
+        "total_return": ov["total_return"],
+        "annual_return": ov["annual_return"],
+        "sharpe_ratio": ov["sharpe_ratio"],
+        "max_drawdown": ov["max_drawdown"],
+        "win_rate": pp["win_rate"].mean(),
+        "trade_count": pp["trade_count"].sum(),
+        "cumulative": ov["total_return"],
         "elapsed": elapsed,
     }
-    return summary, result
+    return summary, pp
 
 
 # ── Load data ─────────────────────────────────────────────────────────────
@@ -174,6 +177,7 @@ if not detail_base.empty and not detail_cb1.empty:
         "baseline_dd": detail_base["max_drawdown"],
         "cb_dd": detail_cb1["max_drawdown"],
     })
+
     comp["diff"] = comp["cb_return"] - comp["baseline_return"]
 
     print(f"{'Period':>6} {'Base Ret':>10} {'CB Ret':>10} {'Diff':>10} {'Base DD':>10} {'CB DD':>10}")

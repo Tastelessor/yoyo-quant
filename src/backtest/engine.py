@@ -122,6 +122,7 @@ class BacktestEngine:
         positions: pd.DataFrame,
         prices: pd.DataFrame,
         market_data: pd.DataFrame | None = None,
+        starting_capital: float | None = None,
     ) -> dict:
         """Run backtest on pre-allocated positions.
 
@@ -135,19 +136,24 @@ class BacktestEngine:
         market_data : DataFrame | None
             Full OHLCV data (date, code, open, high, low, close, volume).
             Required when ``atr_stop_loss`` is enabled.
+        starting_capital : float | None
+            Override initial capital for this run. When chaining walk-forward
+            periods, pass the previous period's ending equity here.
+            Defaults to self.initial_capital.
 
         Returns
         -------
         dict
             keys: trades (DataFrame), equity_curve (DataFrame), metrics (dict).
         """
-        self.cash = self.initial_capital
+        init = starting_capital if starting_capital is not None else self.initial_capital
+        self.cash = init
         holdings: dict[str, int] = {}  # code -> shares held
         entry_prices: dict[str, float] = {}  # code -> buy price
         trades = []
         equity_rows = []
-        _prev_equity: float = self.initial_capital  # for circuit breaker
-        _equity_history: list[float] = [self.initial_capital]  # for momentum
+        _prev_equity: float = init  # for circuit breaker
+        _equity_history: list[float] = [init]  # for momentum
         _active_exposure: float = 1.0  # current applied exposure
         if self.circuit_breaker is not None:
             self.circuit_breaker.reset()
@@ -399,15 +405,16 @@ class BacktestEngine:
         if len(eq_df) > 1:
             eq_df["returns"] = eq_df["equity"].pct_change().fillna(0.0)
 
-        metrics = self._calc_metrics(eq_df, trades_df)
+        metrics = self._calc_metrics(eq_df, trades_df, initial=init)
 
         return {"trades": trades_df, "equity_curve": eq_df, "metrics": metrics}
 
     def _calc_metrics(
-        self, eq: pd.DataFrame, trades: pd.DataFrame
+        self, eq: pd.DataFrame, trades: pd.DataFrame, initial: float | None = None,
     ) -> dict:
         """Calculate performance metrics."""
-        initial = self.initial_capital
+        if initial is None:
+            initial = self.initial_capital
         final = eq.iloc[-1]["equity"] if len(eq) > 0 else initial
 
         total_return = (final - initial) / initial if initial > 0 else 0.0

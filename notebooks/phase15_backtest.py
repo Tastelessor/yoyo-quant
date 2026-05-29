@@ -53,27 +53,20 @@ def run_experiment(data, signal_fn, label, dead_zone=0.0):
     )
     elapsed = time.time() - t0
 
-    if result.empty:
+    pp = result["per_period"]
+    ov = result["overall"]
+
+    if pp.empty:
         return {"label": label, "periods": 0, "elapsed": elapsed}
-
-    avg_sharpe = result["sharpe_ratio"].mean()
-    avg_return = result["annual_return"].mean()
-    avg_maxdd = result["max_drawdown"].mean()
-    total_trades = result["trade_count"].sum()
-
-    compound = 1.0
-    for r in result["total_return"]:
-        compound *= (1 + r)
-    total_return = compound - 1
 
     return {
         "label": label,
-        "periods": len(result),
-        "total_return": total_return,
-        "annual_return": avg_return,
-        "sharpe_ratio": avg_sharpe,
-        "max_drawdown": avg_maxdd,
-        "trade_count": total_trades,
+        "periods": len(pp),
+        "total_return": ov["total_return"],
+        "annual_return": ov["annual_return"],
+        "sharpe_ratio": ov["sharpe_ratio"],
+        "max_drawdown": ov["max_drawdown"],
+        "trade_count": pp["trade_count"].sum(),
         "elapsed": elapsed,
     }
 

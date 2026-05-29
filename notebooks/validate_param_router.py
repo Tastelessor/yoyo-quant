@@ -122,17 +122,21 @@ WF_PARAMS = {
 
 print(f"\n[2/3] Walk-forward: FIXED params (rebalance=20, top_n=5)...", flush=True)
 t0 = time.time()
-fixed_results = walk_forward_backtest(
+fixed_wf = walk_forward_backtest(
     data, make_signal_fn(fixed_rs), **WF_PARAMS,
 )
-n_periods = len(fixed_results)
+fixed_pp = fixed_wf["per_period"]
+fixed_ov = fixed_wf["overall"]
+n_periods = len(fixed_pp)
 print(f"  {n_periods} periods ({time.time() - t0:.0f}s)")
 
 print(f"\n[3/3] Walk-forward: ROUTED params (per-regime)...", flush=True)
 t0 = time.time()
-routed_results = walk_forward_backtest(
+routed_wf = walk_forward_backtest(
     data, make_signal_fn(routed_rs), **WF_PARAMS,
 )
+routed_pp = routed_wf["per_period"]
+routed_ov = routed_wf["overall"]
 print(f"  {n_periods} periods ({time.time() - t0:.0f}s)")
 
 # ── Comparison ─────────────────────────────────────────────────────────
@@ -140,15 +144,15 @@ print(f"\n{'─' * 80}")
 print("Walk-Forward Comparison: FIXED vs ROUTED")
 print(f"{'─' * 80}")
 
-metrics = ["sharpe_ratio", "annual_return", "max_drawdown", "win_rate", "total_return"]
+metrics = ["sharpe_ratio", "annual_return", "max_drawdown", "total_return"]
 labels = {"sharpe_ratio": "Sharpe", "annual_return": "Ann.Ret", "max_drawdown": "MaxDD",
-          "win_rate": "WinRate", "total_return": "TotalRet"}
+          "total_return": "TotalRet"}
 
 print(f"\n{'Period':<10} {'FIXED Sharpe':>13} {'ROUTED Sharpe':>13} {'Δ Sharpe':>10} {'Winner':>8}")
 print("-" * 60)
 for i in range(n_periods):
-    fs = fixed_results.iloc[i]["sharpe_ratio"]
-    rs = routed_results.iloc[i]["sharpe_ratio"]
+    fs = fixed_pp.iloc[i]["sharpe_ratio"]
+    rs = routed_pp.iloc[i]["sharpe_ratio"]
     delta = rs - fs
     winner = "ROUTED" if delta > 0 else ("FIXED" if delta < 0 else "TIE")
     print(f"P{i+1:<9} {fs:>13.3f} {rs:>13.3f} {delta:>+10.3f} {winner:>8}")
@@ -156,12 +160,11 @@ for i in range(n_periods):
 print(f"\n{'Metric':<14} {'FIXED':>10} {'ROUTED':>10} {'Δ':>10} {'Winner':>8}")
 print("-" * 54)
 for m in metrics:
-    f_val = fixed_results[m].mean()
-    r_val = routed_results[m].mean()
+    f_val = fixed_ov.get(m, fixed_pp[m].mean())
+    r_val = routed_ov.get(m, routed_pp[m].mean())
     delta = r_val - f_val
     winner = "ROUTED" if delta > 0 else ("FIXED" if delta < 0 else "TIE")
-    # Format appropriately
-    if m in ("sharpe_ratio", "win_rate"):
+    if m == "sharpe_ratio":
         print(f"{labels[m]:<14} {f_val:>10.3f} {r_val:>10.3f} {delta:>+10.3f} {winner:>8}")
     else:
         print(f"{labels[m]:<14} {f_val:>9.2f}% {r_val:>9.2f}% {delta:>+9.2f}% {winner:>8}")
@@ -169,8 +172,8 @@ for m in metrics:
 # Count wins
 sharpe_wins = 0
 for i in range(n_periods):
-    fs = fixed_results.iloc[i]["sharpe_ratio"]
-    rs = routed_results.iloc[i]["sharpe_ratio"]
+    fs = fixed_pp.iloc[i]["sharpe_ratio"]
+    rs = routed_pp.iloc[i]["sharpe_ratio"]
     if rs > fs:
         sharpe_wins += 1
 

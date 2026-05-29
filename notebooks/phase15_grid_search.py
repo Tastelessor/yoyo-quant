@@ -52,19 +52,14 @@ def run_experiment(data, signal_fn, label, dead_zone):
     )
     elapsed = time.time() - t0
 
-    if result.empty or len(result) < 2:
+    pp = result["per_period"]
+    ov = result["overall"]
+
+    if pp.empty or len(pp) < 2:
         return {"label": label, "periods": 0, "elapsed": elapsed}
 
-    avg_sharpe = result["sharpe_ratio"].mean()
-    std_sharpe = result["sharpe_ratio"].std()
-    avg_return = result["annual_return"].mean()
-    avg_maxdd = result["max_drawdown"].mean()
-    total_trades = result["trade_count"].sum()
-
-    compound = 1.0
-    for r in result["total_return"]:
-        compound *= (1 + r)
-    total_return = compound - 1
+    avg_sharpe = ov["sharpe_ratio"]
+    std_sharpe = ov["per_period_sharpe_std"]
 
     # Fix overflow
     if abs(avg_sharpe) > 100:
@@ -72,13 +67,13 @@ def run_experiment(data, signal_fn, label, dead_zone):
 
     return {
         "label": label,
-        "periods": len(result),
-        "total_return": total_return,
-        "annual_return": avg_return,
+        "periods": len(pp),
+        "total_return": ov["total_return"],
+        "annual_return": ov["annual_return"],
         "sharpe_ratio": avg_sharpe,
         "sharpe_std": std_sharpe,
-        "max_drawdown": avg_maxdd,
-        "trade_count": total_trades,
+        "max_drawdown": ov["max_drawdown"],
+        "trade_count": pp["trade_count"].sum(),
         "elapsed": elapsed,
     }
 

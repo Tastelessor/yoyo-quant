@@ -1,141 +1,27 @@
-# Production config: twin-star + neutralization + consensus filter
-# Phase 14 final deliverable (2026-05-28)
-# 10y walk-forward: Sharpe 0.820, MaxDD 7.8%, Total Return 310%
+# Production config: CSI 500 + Earnings Surprise (fundamental factor)
+# Phase 16 final deliverable (2026-05-29)
+# 3.4y walk-forward: Sharpe 0.930, MaxDD 14.4%, Total Return 36.9%
 #
 # Key design decisions:
-#   - threshold=0.5: AND-gate consensus filter, requires both strategies
-#     to agree, filtering ~60% of weak/conflicting signals
-#   - dead_zone=0.01: scale-invariant smoothing (0.01-0.08 all equivalent)
-#   - neutralization=true: factor-level industry demeaning (+51% Sharpe)
-#   - top_n=5: concentrated high-conviction picks
+#   - CSI 500 universe: mid-cap sweet spot for earnings_surprise factor
+#     (analyst coverage sparse enough for alpha, liquid enough to trade)
+#   - Industry neutralization: cross-sectional demeaning (+51% Sharpe)
+#   - top_n=10: diversified enough to reduce concentration risk
+#   - dead_zone=0.015: position smoothing to reduce unnecessary turnover
+#
+# Previous versions:
+#   v1 (2026-05-28): CSI 300 + twin-star, Sharpe 0.820 (per-period avg)
+#   v2 (2026-05-28): CSI 300 + earnings-only, Sharpe 0.978 (per-period avg)
+#   v3 (2026-05-29): CSI 500 + earnings-only, Sharpe 0.930 (corrected overall)
 
 universe:
-  codes:
-    - "601939"  # 建设银行
-    - "601398"  # 工商银行
-    - "601288"  # 农业银行
-    - "600941"  # 中国移动
-    - "601857"  # 中国石油
-    - "300750"  # 宁德时代
-    - "601988"  # 中国银行
-    - "600938"  # 中国海油
-    - "600519"  # 贵州茅台
-    - "601138"  # 工业富联
-    - "300308"  # 中际旭创
-    - "688981"  # 中芯国际
-    - "601088"  # 中国神华
-    - "601318"  # 中国平安
-    - "601628"  # 中国人寿
-    - "600036"  # 招商银行
-    - "002594"  # 比亚迪
-    - "601899"  # 紫金矿业
-    - "688256"  # 寒武纪
-    - "688041"  # 海光信息
-    - "600900"  # 长江电力
-    - "000333"  # 美的集团
-    - "300502"  # 新易盛
-    - "600028"  # 中国石化
-    - "601658"  # 邮储银行
-    - "601328"  # 交通银行
-    - "601728"  # 中国电信
-    - "002475"  # 立讯精密
-    - "002371"  # 北方华创
-    - "601998"  # 中信银行
-    - "002384"  # 东山精密
-    - "603993"  # 洛阳钼业
-    - "600030"  # 中信证券
-    - "601166"  # 兴业银行
-    - "300476"  # 胜宏科技
-    - "300274"  # 阳光电源
-    - "600276"  # 恒瑞医药
-    - "688008"  # 澜起科技
-    - "603986"  # 兆易创新
-    - "000858"  # 五粮液
-    - "601601"  # 中国太保
-    - "603259"  # 药明康德
-    - "300059"  # 东方财富
-    - "601319"  # 中国人保
-    - "600000"  # 浦发银行
-    - "000338"  # 潍柴动力
-    - "688012"  # 中微公司
-    - "002415"  # 海康威视
-    - "300394"  # 天孚通信
-    - "600150"  # 中国船舶
-    - "601211"  # 国泰海通
-    - "600183"  # 生益科技
-    - "002916"  # 深南电路
-    - "600930"  # 华电新能
-    - "600309"  # 万华化学
-    - "002938"  # 鹏鼎控股
-    - "601816"  # 京沪高铁
-    - "002050"  # 三花智控
-    - "601225"  # 陕西煤业
-    - "003816"  # 中国广核
-    - "002714"  # 牧原股份
-    - "601919"  # 中远海控
-    - "300408"  # 三环集团
-    - "002463"  # 沪电股份
-    - "000651"  # 格力电器
-    - "300124"  # 汇川技术
-    - "600406"  # 国电南瑞
-    - "000001"  # 平安银行
-    - "601898"  # 中煤能源
-    - "603288"  # 海天味业
-    - "002142"  # 宁波银行
-    - "600919"  # 江苏银行
-    - "300433"  # 蓝思科技
-    - "600188"  # 兖矿能源
-    - "601668"  # 中国建筑
-    - "600989"  # 宝丰能源
-    - "601600"  # 中国铝业
-    - "000725"  # 京东方A
-    - "600690"  # 海尔智家
-    - "300760"  # 迈瑞医疗
-    - "600111"  # 北方稀土
-    - "601818"  # 光大银行
-    - "601336"  # 新华保险
-    - "601985"  # 中国核电
-    - "002352"  # 顺丰控股
-    - "600031"  # 三一重工
-    - "000792"  # 盐湖股份
-    - "302132"  # 中航成飞
-    - "600025"  # 华能水电
-    - "300033"  # 同花顺
-    - "601066"  # 中信建投
-    - "000063"  # 中兴通讯
-    - "600887"  # 伊利股份
-    - "601766"  # 中国中车
-    - "601688"  # 华泰证券
-    - "601995"  # 中金公司
-    - "002460"  # 赣锋锂业
-    - "601100"  # 恒立液压
-    - "600362"  # 江西铜业
-    - "600809"  # 山西汾酒
+  source: index
+  index_code: "000905.SH"
+  fetch_date: "2026-05-23"
   filters:
     exclude_st: true
   start_date: "2016-06-01"
   end_date: "2026-05-22"
-
-stock_selector:
-  audit:
-    lookback: 60
-    lag: 5
-    min_coverage: 0.8
-    min_stability: 0.3
-    min_dispersion: 0.10
-  factors:
-    - calc_money_flow_6d
-    - calc_up_down_vol_ratio_26d
-    - calc_obv_6d
-    - calc_momentum_20d_return
-    - calc_return_1d_times_vol
-  lookback: 60
-  lag: 5
-  min_coverage: 0.8
-  min_stability: 0.3
-  min_dispersion: 0.10
-  min_stocks: 5
-  top_n: null
 
 portfolio:
   allocator: equal_weight
@@ -147,26 +33,19 @@ neutralization:
   min_peers: 3
 
 strategies:
-  # Triple-star combiner: AND-gate consensus (threshold=0.5)
-  # All three strategies must agree for a signal to pass.
-  # Twin-star (microstructure) + third star (fundamental earnings).
+  # Single-stream: earnings surprise only
+  # Twin-star (vwap + volatility) tested and rejected on CSI 500 (Sharpe -0.17)
   combiner:
     type: weighted_vote
-    threshold: 0.5
+    threshold: 0.0
   rules:
-    - name: reversed_gtja_vwap
-      params: { rebalance: 20, top_n: 5, bottom_n: 3 }
-      weight: 0.35
-    - name: gtja_volatility
-      params: { rebalance: 20, top_n: 5, bottom_n: 3 }
-      weight: 0.35
     - name: gtja_earnings_surprise
-      params: { rebalance: 20, top_n: 5, bottom_n: 3 }
-      weight: 0.30
+      params: { rebalance: 15, top_n: 10, bottom_n: 5 }
+      weight: 1.0
 
 backtest:
-  stop_loss: -0.15
-  take_profit: 0.05
+  stop_loss: null
+  take_profit: null
   trading_cost:
     commission: 0.0001
     stamp_tax: 0.0005

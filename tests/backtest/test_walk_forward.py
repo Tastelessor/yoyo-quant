@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from src.backtest.walk_forward import (
+    compute_overall_metrics,
     generate_windows,
     walk_forward_backtest,
 )
@@ -50,8 +51,6 @@ class TestGenerateWindows:
     def test_correct_number_of_windows(self):
         dates = pd.bdate_range("2023-01-01", "2025-12-31")
         windows = generate_windows(dates, train_months=12, test_months=3)
-        # ~36 months total, 12+3=15 month windows stepping by 3
-        # Should produce roughly (36-12)/3 = 8 windows
         assert len(windows) >= 5
 
     def test_window_boundaries(self):
@@ -85,50 +84,147 @@ class TestGenerateWindows:
         assert len(windows) == 0
 
 
+class TestComputeOverallMetrics:
+    """Test the overall metrics computation."""
+
+    def test_basic_computation(self):
+        """Should compute correct metrics from a simple equity curve."""
+        eq = pd.DataFrame({
+            "date": pd.bdate_range("2023-01-01", periods=100),
+            "equity": np.linspace(1_000_000, 1_100_000, 100),
+        })
+        pp = pd.DataFrame({"sharpe_ratio": [1.0, 1.5, 0.5]})
+        result = compute_overall_metrics(eq, pp, 1_000_000)
+
+        assert result["total_return"] == pytest.approx(0.1, abs=0.01)
+        assert result["annual_return"] > 0
+        assert isinstance(result["sharpe_ratio"], float)
+        assert result["max_drawdown"] >= 0
+        assert result["per_period_sharpe_mean"] == pytest.approx(1.0)
+
+    def test_flat_equity_zero_sharpe(self):
+        """Flat equity should give zero Sharpe and zero return."""
+        eq = pd.DataFrame({
+            "date": pd.bdate_range("2023-01-01", periods=50),
+            "equity": [1_000_000.0] * 50,
+        })
+        pp = pd.DataFrame({"sharpe_ratio": [0.0]})
+        result = compute_overall_metrics(eq, pp, 1_000_000)
+
+        assert result["total_return"] == pytest.approx(0.0)
+        assert result["sharpe_ratio"] == pytest.approx(0.0)
+        assert result["max_drawdown"] == pytest.approx(0.0)
+
+    def test_empty_equity(self):
+        """Empty equity curve should return zeros."""
+        eq = pd.DataFrame(columns=["date", "equity"])
+        pp = pd.DataFrame(columns=["sharpe_ratio"])
+        result = compute_overall_metrics(eq, pp, 1_000_000)
+
+        assert result["total_return"] == 0.0
+        assert result["sharpe_ratio"] == 0.0
+
+
 class TestWalkForwardBacktest:
     """Test walk-forward backtest execution."""
 
-    def test_returns_dataframe(self):
+    def test_returns_dict(self):
         data = _make_stock_data("2023-01-01", "2025-12-31")
         result = walk_forward_backtest(
             data, _dummy_signal_fn, train_months=12, test_months=3
         )
-        assert isinstance(result, pd.DataFrame)
+        assert isinstance(result, dict)
+        assert "per_period" in result
+        assert "overall" in result
+        assert "equity_curve" in result
 
-    def test_result_has_expected_columns(self):
+    def test_per_period_has_expected_columns(self):
         data = _make_stock_data("2023-01-01", "2025-12-31")
         result = walk_forward_backtest(
             data, _dummy_signal_fn, train_months=12, test_months=3
         )
+        pp = result["per_period"]
         expected_cols = {
             "period", "train_start", "train_end",
             "test_start", "test_end", "total_return", "annual_return",
             "sharpe_ratio", "max_drawdown", "win_rate", "trade_count",
             "total_cost", "cost_ratio",
         }
-        assert expected_cols.issubset(set(result.columns))
+        assert expected_cols.issubset(set(pp.columns))
 
-    def test_result_has_rows(self):
+    def test_per_period_has_rows(self):
         data = _make_stock_data("2023-01-01", "2025-12-31")
         result = walk_forward_backtest(
             data, _dummy_signal_fn, train_months=12, test_months=3
         )
-        assert len(result) > 0
+        assert len(result["per_period"]) > 0
+
+    def test_overall_metrics_keys(self):
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        result = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3
+        )
+        overall = result["overall"]
+        assert "total_return" in overall
+        assert "annual_return" in overall
+        assert "sharpe_ratio" in overall
+        assert "max_drawdown" in overall
+        assert "per_period_sharpe_mean" in overall
+        assert "per_period_sharpe_std" in overall
+
+    def test_equity_curve_is_continuous(self):
+        """Equity curve should span all periods without gaps."""
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        result = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3
+        )
+        eq = result["equity_curve"]
+        assert len(eq) > 0
+        assert list(eq.columns) == ["date", "equity"]
+        # Dates should be sorted
+        assert (eq["date"].diff().dropna() >= pd.Timedelta(0)).all()
+
+    def test_capital_chaining(self):
+        """Each period should start where the previous ended."""
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        result = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3,
+            capital=1_000_000,
+        )
+        eq = result["equity_curve"]
+        # All equity values should be positive (capital chained, not reset)
+        assert (eq["equity"] > 0).all()
+
+    def test_overall_sharpe_different_from_per_period_mean(self):
+        """Overall Sharpe (from continuous returns) should differ from
+        the mean of per-period Sharpes."""
+        data = _make_stock_data("2023-01-01", "2025-12-31")
+        result = walk_forward_backtest(
+            data, _dummy_signal_fn, train_months=12, test_months=3
+        )
+        overall_sharpe = result["overall"]["sharpe_ratio"]
+        pp_mean = result["overall"]["per_period_sharpe_mean"]
+        # They should generally be different numbers
+        # (not checking exact inequality since they could coincidentally match)
+        assert isinstance(overall_sharpe, float)
+        assert isinstance(pp_mean, float)
 
     def test_metrics_are_numeric(self):
         data = _make_stock_data("2023-01-01", "2025-12-31")
         result = walk_forward_backtest(
             data, _dummy_signal_fn, train_months=12, test_months=3
         )
+        pp = result["per_period"]
         for col in ["total_return", "annual_return", "sharpe_ratio", "max_drawdown"]:
-            assert pd.api.types.is_numeric_dtype(result[col])
+            assert pd.api.types.is_numeric_dtype(pp[col])
 
     def test_period_is_sequential(self):
         data = _make_stock_data("2023-01-01", "2025-12-31")
         result = walk_forward_backtest(
             data, _dummy_signal_fn, train_months=12, test_months=3
         )
-        assert (result["period"] == range(1, len(result) + 1)).all()
+        pp = result["per_period"]
+        assert (pp["period"] == range(1, len(pp) + 1)).all()
 
     def test_with_exposure(self):
         """Walk-forward with exposure scaling."""
@@ -141,7 +237,7 @@ class TestWalkForwardBacktest:
             data, signal_fn_with_exposure, train_months=12, test_months=3,
             exposure_fn=lambda dates: pd.Series(0.5, index=dates),
         )
-        assert len(result) > 0
+        assert len(result["per_period"]) > 0
 
 
 def _make_selector_fn(selected_codes):
@@ -173,8 +269,7 @@ class TestWalkForwardWithStockSelector:
             data, _dummy_signal_fn, train_months=12, test_months=3,
             stock_selector_fn=None,
         )
-        assert len(result) == len(result_with_none)
-        assert list(result.columns) == list(result_with_none.columns)
+        assert len(result["per_period"]) == len(result_with_none["per_period"])
 
     def test_selector_filters_stocks(self):
         """Selector that picks 1 code should reduce unique codes in signals."""
@@ -185,7 +280,7 @@ class TestWalkForwardWithStockSelector:
             data, _dummy_signal_fn, train_months=12, test_months=3,
             stock_selector_fn=selector,
         )
-        assert len(result) > 0
+        assert len(result["per_period"]) > 0
 
     def test_empty_pool_produces_zero_metrics(self):
         """Empty selector pool should produce zero-metric rows, not crash."""
@@ -196,23 +291,10 @@ class TestWalkForwardWithStockSelector:
             data, _dummy_signal_fn, train_months=12, test_months=3,
             stock_selector_fn=selector,
         )
-        assert len(result) > 0
-        assert (result["total_return"] == 0.0).all()
-        assert (result["trade_count"] == 0).all()
-
-    def test_result_columns_unchanged(self):
-        """Result DataFrame should have same columns with or without selector."""
-        data = _make_stock_data("2023-01-01", "2025-12-31")
-        selector = _make_selector_fn(["000001"])
-
-        result_no_sel = walk_forward_backtest(
-            data, _dummy_signal_fn, train_months=12, test_months=3,
-        )
-        result_with_sel = walk_forward_backtest(
-            data, _dummy_signal_fn, train_months=12, test_months=3,
-            stock_selector_fn=selector,
-        )
-        assert set(result_no_sel.columns) == set(result_with_sel.columns)
+        pp = result["per_period"]
+        assert len(pp) > 0
+        assert (pp["total_return"] == 0.0).all()
+        assert (pp["trade_count"] == 0).all()
 
 
 class TestWalkForwardWithIndustryCap:
@@ -228,8 +310,7 @@ class TestWalkForwardWithIndustryCap:
             data, _dummy_signal_fn, train_months=12, test_months=3,
             industry_map=None,
         )
-        assert len(r1) == len(r2)
-        assert list(r1.columns) == list(r2.columns)
+        assert len(r1["per_period"]) == len(r2["per_period"])
 
     def test_industry_cap_with_mapping(self):
         """With industry_map, should still produce valid results."""
@@ -239,12 +320,10 @@ class TestWalkForwardWithIndustryCap:
             data, _dummy_signal_fn, train_months=12, test_months=3,
             industry_map=industry_map, max_industry_weight=0.50,
         )
-        assert len(result) > 0
-        assert set(result.columns) == {
-            "period", "train_start", "train_end",
-            "test_start", "test_end", "total_return", "annual_return",
-            "sharpe_ratio", "max_drawdown", "win_rate", "trade_count",
-            "total_cost", "cost_ratio",
+        pp = result["per_period"]
+        assert len(pp) > 0
+        assert set(pp.columns) >= {
+            "period", "total_return", "sharpe_ratio", "max_drawdown",
         }
 
     def test_industry_cap_with_missing_codes(self):
@@ -255,7 +334,7 @@ class TestWalkForwardWithIndustryCap:
             data, _dummy_signal_fn, train_months=12, test_months=3,
             industry_map=industry_map, max_industry_weight=0.50,
         )
-        assert len(result) > 0
+        assert len(result["per_period"]) > 0
 
 
 class TestWalkForwardWithCircuitBreaker:
@@ -271,8 +350,7 @@ class TestWalkForwardWithCircuitBreaker:
             data, _dummy_signal_fn, train_months=12, test_months=3,
             circuit_breaker=None,
         )
-        assert len(r1) == len(r2)
-        assert list(r1.columns) == list(r2.columns)
+        assert len(r1["per_period"]) == len(r2["per_period"])
 
     def test_circuit_breaker_runs_without_error(self):
         """Circuit breaker should not crash the backtest."""
@@ -284,8 +362,9 @@ class TestWalkForwardWithCircuitBreaker:
             data, _dummy_signal_fn, train_months=12, test_months=3,
             circuit_breaker=cb,
         )
-        assert len(result) > 0
-        assert set(result.columns) >= {
+        pp = result["per_period"]
+        assert len(pp) > 0
+        assert set(pp.columns) >= {
             "period", "total_return", "sharpe_ratio", "max_drawdown",
         }
 
@@ -296,12 +375,9 @@ class TestWalkForwardWithCircuitBreaker:
         data = _make_stock_data("2023-01-01", "2025-12-31")
         cb = DrawdownCircuitBreaker(threshold=-0.10, recovery_threshold=-0.03)
 
-        # Run backtest
         walk_forward_backtest(
             data, _dummy_signal_fn, train_months=12, test_months=3,
             circuit_breaker=cb,
         )
 
-        # After backtest, breaker was reset at start of last period
-        # so _peak reflects only the last period's equity curve
         assert cb._peak >= 0

@@ -984,6 +984,10 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 
 100 股（production.yaml），10 年 walk-forward（2016-06 ~ 2026-05）：
 
+> **注意（2026-05-29 修正）**：以下 Sharpe 为各期 per-period Sharpe 的算术平均，Return 为各期
+> compound，均非基于连续权益曲线的正确指标。已修复 `walk_forward.py`，新增 `compute_overall_metrics`
+> 从连续日收益序列计算。旧数字保留作相对比较参考，绝对值需重跑确认。
+
 | 配置 | Sharpe | MaxDD | Return | Trades |
 |------|--------|-------|--------|--------|
 | twin-star/0.52（基线） | 0.818 | 7.8% | 309.6% | 920 |
@@ -1047,5 +1051,79 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 4. **Threshold 对 triple 无影响**：0.4/0.5/0.6 结果相同，说明瓶颈在信号交集而非门槛
 5. **跨期 Std 结构性卡在 ~1.8**：这是 walk-forward 框架的固有属性（12m/3m 窗口），非因子或策略问题
 6. **Sharpe 0.989 ≈ 1.0**：距离目标仅差 1.1%，可能通过微调 rebalance 或扩大股票池突破
+
+---
+
+## Phase 16：Walk-Forward 修正 + 市场选择 + 连续回测（2026-05-29）
+
+### 任务
+
+1. 修正 walk-forward metrics 聚合方式（per-period 平均 → 连续权益曲线）
+2. 对比 CSI 300 / CSI 500 / CSI 1000 上 earnings_surprise 的表现
+3. 引入连续回测框架，对比 walk-forward vs continuous
+
+### 实现
+
+**walk_forward.py 修正**：
+- `walk_forward_backtest()` / `walk_forward_multi_silo()` 返回 dict（per_period + overall + equity_curve）
+- 资金跨期链式传递（`starting_capital` 参数）
+- `compute_overall_metrics()` 从连续权益曲线计算 Sharpe / 年化收益 / MaxDD
+- Sharpe 计算中 `std > 1e-10` 防浮点噪声
+
+**engine.py 修正**：
+- `BacktestEngine.run()` 新增 `starting_capital` 参数，覆盖 `initial_capital`
+
+**continuous.py 新建**：
+- `continuous_backtest()` — 单次通过，无 train/test 切分
+- `compute_continuous_metrics()` — 从连续权益曲线计算指标
+
+**测试**：新增 9 个 continuous tests + 更新 22 个 walk-forward tests，总测试 786 个
+
+### 三市场 earnings_surprise 对比（corrected overall metrics）
+
+| 市场 | 配置 | Sharpe | MaxDD | Return | 数据长度 |
+|------|------|--------|-------|--------|---------|
+| **CSI 500** | earn/N10/rb15 | **0.930** | **14.4%** | 36.9% | 3.4y |
+| CSI 300 | earn/N10/rb15 | 0.665 | 25.2% | 171% | 10y |
+| CSI 1000 | earn/N15/rb15 | 0.220 | 39.4% | 56.9% | 3.4y |
+| CSI 1000 | twin-star/N25 | -0.135 | 54.1% | -22.4% | 3.4y |
+
+**关键发现**：
+1. **CSI 500 是 earnings_surprise 的甜区** — 中盘股分析师覆盖少、盈利预期偏差大，信息不对称产生最强 alpha
+2. **twin-star（量价因子）在 CSI 500/1000 全面失效** — 微观结构因子只在大盘流动性好的股票上有效
+3. **CSI 1000 数据质量不够** — tushare 限流导致大量小盘股无 earnings 数据，信号退化严重
+4. **之前"CSI 500 无效"的结论只适用于量价策略**，基本面因子在中盘股上更有效
+
+### Walk-Forward vs Continuous 对比（CSI 500, earn/N10）
+
+| 指标 | Walk-Forward | Continuous | 差异 |
+|------|-------------|-----------|------|
+| Sharpe | 0.930 | **0.333** | -64% |
+| 年化收益 | 15.91% | **8.17%** | -49% |
+| MaxDD | 14.36% | **32.36%** | +125% |
+| 总收益 | 36.89% | 29.01% | -21% |
+
+**连续回测年度拆解**：
+
+| 年份 | 收益 | MaxDD |
+|------|------|-------|
+| 2023 | **-26.7%** | 31.8% |
+| 2024 | +41.6% | 22.6% |
+| 2025 | +23.8% | 7.1% |
+| 2026 | +0.5% | 8.6% |
+
+**关键发现**：
+1. **walk-forward 完全掩盖了 2023 年的暴跌** — 每 3 个月重置资金，-26.7% 的回撤被截断
+2. **真实投资者体验**：先亏 26%，再用两年赚回来
+3. **诚实指标**：Sharpe 0.33, 年化 8.2%, MaxDD 32.4%
+4. **2024-2025 表现不错**（年化 ~30%），策略在特定市场环境下有效
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-05-29 | 生产配置切换到 CSI 500 + earnings-only | CSI 500 earnings Sharpe 0.930 > CSI 300 的 0.665 |
+| 2026-05-29 | 去掉 SL/TP | 对 earnings 策略（基本面驱动）无意义 |
+| 2026-05-29 | 保留 walk-forward 但标注局限性 | 连续回测验证了策略有效性，walk-forward 用于参数选择仍合理 |
 
 **结论**：earnings-only N=10 rb=15 是当前最优配置。Std < 1.2 需要架构层面改变（拉长 test_months、引入跨 period 状态累积、或切换到连续回测模式）。

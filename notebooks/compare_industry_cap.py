@@ -57,18 +57,21 @@ def run_experiment(
     )
     elapsed = time.time() - t0
 
-    if result.empty:
+    pp = result["per_period"]
+    ov = result["overall"]
+
+    if pp.empty:
         return {"label": label, "periods": 0, "elapsed": elapsed}
 
     return {
         "label": label,
-        "periods": len(result),
-        "total_return": result["total_return"].mean(),
-        "annual_return": result["annual_return"].mean(),
-        "sharpe_ratio": result["sharpe_ratio"].mean(),
-        "max_drawdown": result["max_drawdown"].mean(),
-        "win_rate": result["win_rate"].mean(),
-        "trade_count": result["trade_count"].mean(),
+        "periods": len(pp),
+        "total_return": ov["total_return"],
+        "annual_return": ov["annual_return"],
+        "sharpe_ratio": ov["sharpe_ratio"],
+        "max_drawdown": ov["max_drawdown"],
+        "win_rate": pp["win_rate"].mean(),
+        "trade_count": pp["trade_count"].sum(),
         "elapsed": elapsed,
     }
 

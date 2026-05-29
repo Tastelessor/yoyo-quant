@@ -49,7 +49,8 @@
 | risk (止损) | ✅ 重构 | 止损逻辑已迁移到 BacktestEngine，Risk 层仅保留截面过滤规则 |
 | backtest (rqalpha adapter) | ✅ 完成 | adapter.py + 11 tests |
 | backtest (lightweight engine) | ✅ 完成 | engine.py: SL/TP/ATR + TradingCost(佣金/印花税/过户费/滑点) + 39 tests |
-| backtest (walk-forward) | ✅ 完成 | walk_forward.py + 11 tests |
+| backtest (walk-forward) | ✅ 完成 | walk_forward.py: 资金链式传递 + compute_overall_metrics + 22 tests |
+| backtest (连续回测) | ✅ 完成 | continuous.py: 单次通过无 train/test 切分 + 9 tests |
 | visualization | ✅ 完成 | charts.py + 9 tests |
 | analysis (参数扫描) | ✅ 完成 | param_sweep.py + plot.py + 18 tests |
 | analysis (管道诊断) | ✅ 完成 | pipeline_diagnostics.py + 7 tests |
@@ -72,7 +73,7 @@
 | risk (止盈规则) | ✅ 重构 | 已迁移到 BacktestEngine（与止损统一管理） |
 | execution | 🔲 未开始 | 统一下单接口 |
 
-**测试总计**：776 tests（55 个测试文件）
+**测试总计**：786 tests（57 个测试文件）
 
 ## 目录结构
 
@@ -176,8 +177,12 @@ configs/
 
 ### 现状诊断（Phase 14 结项，2026-05-28）
 
+> **注意（2026-05-29 修正）**：以下数字基于旧的 per-period 平均算法，Sharpe 和年化收益被高估。
+> 新的 `compute_overall_metrics` 从连续权益曲线计算正确指标。旧数字保留作相对比较参考，
+> 绝对值需重跑 notebook 确认。
+
 生产配置（twin-star + 中性化 + threshold=0.5 + dead_zone=0.01）10 年全周期回测：
-- **Sharpe 0.820, 年化 24%, MaxDD 7.8%, Cumulative 312%, Trades 920**
+- **旧算法：Sharpe 0.820 (per-period mean), 年化 24% (per-period mean), MaxDD 7.8%, Cumulative 312%, Trades 920**
 
 瓶颈在**特异性风险暴露**：组合仅持有 ~2 只股票（50% 权重），个股极端回撤直接传导至 NAV，跨期 Sharpe 标准差 1.869。
 
@@ -193,11 +198,11 @@ configs/
 |---|------|------|------|------|
 | A | ~~多类别因子组合~~ | 信号层 | **已验证** | Sharpe 0.487 vs 单策略 0.606。弱策略稀释 alpha，但降低 MaxDD |
 | B | ~~行业感知分配~~ | 组合层 | **已验证无效** | 行业 cap 无增量。90 个行业已分散，cap 只限制自由度不降风险 |
-| C | ~~CSI 500 中盘扩展~~ | 数据层 | **已验证无效** | CSI 500 平均 Sharpe 0.23 vs CSI 300 的 0.44 |
+| C | **CSI 500 + earnings** | 数据层 | **✅ Phase 16 验证** | 量价策略在 CSI 500 无效，但 earnings_surprise 在 CSI 500 Sharpe 0.930（walk-forward）/ 0.333（连续），是目前最优组合 |
 | E | ~~全市场 + stock_selector~~ | 数据层 | **已验证无效** | stock_selector 质量过滤无正向价值。可投池（市值>200亿，844只）Sharpe 0.43 已是最优 |
 | F | **小止盈大止损** | 风控层 | **已实现但不适用** | SL/TP 对均值回归有害（割肉+截断利润），适合趋势策略 |
 | G | ~~DrawdownCircuitBreaker~~ | 风控层 | **已验证** | MaxDD 降 5.6pp（-33.4%→-27.8%），但 Sharpe 降 0.076。阈值锁 -0.35 作安全底线 |
-| H | **基本面盈利断层因子** | 信号层 | **✅ Phase 15 完成** | earnings-only N=10 rb=15: Sharpe 0.989, MaxDD 7.3%, Return 363%。纯基本面 > 混合组合。跨期 Std 卡在 1.8（walk-forward 结构限制） |
+| H | **基本面盈利断层因子** | 信号层 | **✅ Phase 15 完成** | earnings-only N=10 rb=15: 旧算法 Sharpe 0.989 (per-period mean), MaxDD 7.3%, Return 363% (compound)。纯基本面 > 混合组合。需重跑确认绝对值 |
 | D | Execution 模块 | 基础层 | 待做 | 统一下单接口 |
 
 ### Direction C 验证结果（2026-05-27）
