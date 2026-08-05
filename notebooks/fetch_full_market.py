@@ -43,13 +43,15 @@ def main() -> None:
     save_parquet(clean, CLEAN_PATH)
     print(f"[save] {len(clean)} rows -> {CLEAN_PATH}")
     print(
-        "[stats] limit_up=%d limit_down=%d suspended=%d codes=%d range=%s -> %s",
-        int(clean["limit_up"].sum()),
-        int(clean["limit_down"].sum()),
-        int(clean["is_suspended"].sum()),
-        clean["code"].nunique(),
-        clean["date"].min().date(),
-        clean["date"].max().date(),
+        "[stats] limit_up=%d limit_down=%d suspended=%d codes=%d range=%s -> %s"
+        % (
+            int(clean["limit_up"].sum()),
+            int(clean["limit_down"].sum()),
+            int(clean["is_suspended"].sum()),
+            clean["code"].nunique(),
+            clean["date"].min().date(),
+            clean["date"].max().date(),
+        )
     )
 
 
