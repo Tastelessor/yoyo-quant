@@ -269,6 +269,38 @@ def factor_monitor(
         )
         changes = diff_states(state, old_state)
         status = build_status_table(state)
+
+        # ---- 绘图：health_heatmap + 每 (factor, fwd_window) 一张 lifecycle ----
+        # CLI 只保存图不交互显示，统一 Agg 后端（须在 import pyplot 前设置）
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from analysis.plot import plot_factor_health_heatmap, plot_factor_lifecycle
+
+        fig_dir = Path(output_dir) / "figures"
+        fig_dir.mkdir(parents=True, exist_ok=True)
+        fig_paths: list[str] = []
+        if not state.empty:
+            heat = plot_factor_health_heatmap(state)
+            heat_path = fig_dir / "health_heatmap.png"
+            heat.savefig(heat_path, dpi=100, bbox_inches="tight")
+            plt.close(heat)
+            fig_paths.append(str(heat_path))
+            for (fname, fw), sub in state.groupby(["factor", "fwd_window"]):
+                fig = plot_factor_lifecycle(
+                    sub,
+                    t_active=t_active,
+                    t_decay=t_decay,
+                    ir_active_line=ir_active_line,
+                    ir_dead_line=ir_dead_line,
+                    title=f"{fname} fwd={fw}",
+                )
+                life_path = fig_dir / f"lifecycle_{fname}_fwd{fw}.png"
+                fig.savefig(life_path, dpi=100, bbox_inches="tight")
+                plt.close(fig)
+                fig_paths.append(str(life_path))
         config = {
             "windows": list(fwd_windows),
             "window": window,
@@ -286,6 +318,7 @@ def factor_monitor(
                 "status": _records(status),
                 "changes": _records(changes),
                 "config": config,
+                "figures": fig_paths,
             }
             typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         else:
@@ -293,6 +326,8 @@ def factor_monitor(
             typer.echo("")
             typer.echo(render_changes(changes))
             typer.echo(f"state 已写入 {Path(output_dir) / 'state.parquet'}")
+            if fig_paths:
+                typer.echo(f"图已保存: {', '.join(fig_paths)}")
     except (ValueError, KeyError, FileNotFoundError) as exc:
         typer.echo(f"错误: {exc}", err=True)
         raise typer.Exit(code=1) from exc

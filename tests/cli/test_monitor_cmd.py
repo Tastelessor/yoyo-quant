@@ -8,6 +8,7 @@
 """
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -241,6 +242,38 @@ def test_render_changes_empty():
     cols = ["date", "factor", "fwd_window", "old_state", "new_state"]
     text = render_changes(pd.DataFrame(columns=cols))
     assert "无状态切换" in text
+
+
+def test_monitor_saves_figures(tmp_path, monkeypatch):
+    """monitor 输出 figures 键：health_heatmap + 每 (factor, fwd) 一张 lifecycle 图。"""
+    monkeypatch.setenv("FACTOR_CACHE_DIR", str(tmp_path / "factors-cache"))
+    price = _write_price(tmp_path, n_stocks=20, n_days=150, seed=7)
+    out_dir = tmp_path / "audit"
+    result = runner.invoke(
+        app,
+        [
+            "factor",
+            "monitor",
+            "--data",
+            price,
+            "--factor",
+            "calc_hv",
+            "--windows",
+            "5,20",
+            "--window",
+            "60",
+            "--output-dir",
+            str(out_dir),
+            "--no-cache",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert "figures" in payload
+    assert len(payload["figures"]) == 3  # heatmap + calc_hv×fwd5 + calc_hv×fwd20
+    for p in payload["figures"]:
+        assert Path(p).exists()
 
 
 @pytest.fixture(autouse=True)
