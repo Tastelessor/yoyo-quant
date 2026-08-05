@@ -198,6 +198,103 @@ def compute_ir(ic_series: pd.Series) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Rolling IC / IR / t-statistic（因子生命周期监控）
+# ---------------------------------------------------------------------------
+
+
+def _validate_rolling_params(window: int, min_periods: int | None) -> int:
+    if not isinstance(window, int) or window < 1:
+        raise ValueError(f"window 必须为正整数，收到 {window!r}")
+    mp = window if min_periods is None else min_periods
+    if not isinstance(mp, int) or mp < 1:
+        raise ValueError(f"min_periods 必须为正整数，收到 {mp!r}")
+    return mp
+
+
+def compute_rolling_ic(
+    ic_series: pd.Series,
+    window: int,
+    min_periods: int | None = None,
+) -> pd.Series:
+    """Compute rolling-window mean of a daily IC series.
+
+    对 ``compute_ic`` 输出的日频 IC 时序做 ``rolling(window)`` 均值聚合，
+    度量因子预测力的近期水平。
+
+    Parameters
+    ----------
+    ic_series : Series
+        日频 IC 时序（index 为升序日期，见 ``compute_ic``）。
+    window : int
+        滚动窗口（数据行数，>= 1）。
+    min_periods : int | None
+        窗口内有效值下限；None 时等于 ``window``（窗口须填满）。
+
+    Returns
+    -------
+    Series
+        滚动 IC 均值，index 与 ``ic_series`` 一致。
+    """
+    mp = _validate_rolling_params(window, min_periods)
+    return ic_series.rolling(window=window, min_periods=mp).mean()
+
+
+def compute_rolling_ir(
+    ic_series: pd.Series,
+    window: int,
+    min_periods: int | None = None,
+) -> pd.Series:
+    """Compute rolling IR = mean/std（ddof=1）over a window.
+
+    度量预测力近期稳定性；窗口内 IC 恒定时（std=0）返回 ``inf``，
+    与 ``compute_ir`` 语义一致。
+
+    Parameters
+    ----------
+    ic_series / window / min_periods
+        同 ``compute_rolling_ic``。
+
+    Returns
+    -------
+    Series
+        滚动 IR，index 与 ``ic_series`` 一致。
+    """
+    mp = _validate_rolling_params(window, min_periods)
+    mean = ic_series.rolling(window=window, min_periods=mp).mean()
+    std = ic_series.rolling(window=window, min_periods=mp).std(ddof=1)
+    return mean / std  # std=0 → inf，与 compute_ir 一致
+
+
+def compute_rolling_tstat(
+    ic_series: pd.Series,
+    window: int,
+    min_periods: int | None = None,
+) -> pd.Series:
+    """Compute rolling t-statistic = IR × √n（n = 窗口内有效样本数）。
+
+    把滚动 IR 换算为显著性统计量，与窗口长度解耦（60 日窗口 IR=0.7 ↔
+    t≈5.4），是状态机判定的主输入。
+
+    Parameters
+    ----------
+    ic_series / window / min_periods
+        同 ``compute_rolling_ic``；窗口含 NaN 时须显式调低 ``min_periods``
+        让有效样本数足够（n 取窗口内有效数而非窗口长度）。
+
+    Returns
+    -------
+    Series
+        滚动 t 统计量，index 与 ``ic_series`` 一致；std=0 时为 ``inf``。
+    """
+    mp = _validate_rolling_params(window, min_periods)
+    rolling = ic_series.rolling(window=window, min_periods=mp)
+    mean = rolling.mean()
+    std = rolling.std(ddof=1)
+    n = rolling.count()
+    return mean / std * np.sqrt(n)
+
+
+# ---------------------------------------------------------------------------
 # Quantile (layered) returns
 # ---------------------------------------------------------------------------
 
