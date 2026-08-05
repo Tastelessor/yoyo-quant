@@ -12,9 +12,8 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-from src.backtest.engine import BacktestEngine, TradingCost
-from src.portfolio.allocator import equal_weight
-from src.risk.tradability import enforce_t1, filter_tradable
+from src.backtest.engine import TradingCost
+from src.backtest.pipeline import run_pipeline
 
 
 def compute_continuous_metrics(equity_curve: pd.DataFrame, capital: float) -> dict:
@@ -34,8 +33,10 @@ def compute_continuous_metrics(equity_curve: pd.DataFrame, capital: float) -> di
     """
     if equity_curve.empty:
         return {
-            "total_return": 0.0, "annual_return": 0.0,
-            "sharpe_ratio": 0.0, "max_drawdown": 0.0,
+            "total_return": 0.0,
+            "annual_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown": 0.0,
         }
 
     eq = equity_curve.sort_values("date").reset_index(drop=True)
@@ -131,13 +132,12 @@ def continuous_backtest(
         "equity_curve": DataFrame (date, equity).
         "trades": DataFrame of executed trades.
     """
-    from src.portfolio.smoother import smooth_positions
-    from src.risk.position_limit import apply_position_limit
-
     empty_result = {
         "overall": {
-            "total_return": 0.0, "annual_return": 0.0,
-            "sharpe_ratio": 0.0, "max_drawdown": 0.0,
+            "total_return": 0.0,
+            "annual_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown": 0.0,
         },
         "equity_curve": pd.DataFrame(columns=["date", "equity"]),
         "trades": pd.DataFrame(),
@@ -151,54 +151,31 @@ def continuous_backtest(
     if signals.empty:
         return empty_result
 
-    signals = filter_tradable(data, signals)
-    signals = enforce_t1(signals)
-
-    # If rebalance_days is set, sparsify signals
-    if rebalance_days is not None:
-        all_dates = sorted(data["date"].unique())
-        signal_dates = sorted(signals["date"].unique())
-        # Keep only every Nth signal date
-        keep_dates = set(signal_dates[i] for i in range(0, len(signal_dates), rebalance_days))
-        signals = signals[signals["date"].isin(keep_dates)]
-
     # Compute exposure
     all_dates = pd.DatetimeIndex(sorted(data["date"].unique()))
     exposure = None
     if exposure_fn is not None:
         exposure = exposure_fn(all_dates)
 
-    # Allocate positions
-    prices = data[["date", "code", "close"]].drop_duplicates()
-    positions = equal_weight(signals, prices, capital=capital, exposure=exposure)
-
-    # Position smoothing
-    if dead_zone > 0:
-        positions = smooth_positions(
-            positions, None, prices,
-            capital=capital, exposure=exposure, dead_zone=dead_zone,
-        )
-
-    # Industry cap
-    if industry_map is not None:
-        from src.portfolio.industry_cap import apply_industry_cap
-        positions = apply_industry_cap(
-            positions, industry_map, max_industry_weight
-        )
-
-    # Position limit
-    positions = apply_position_limit(positions, max_weight=max_weight)
-
-    # Run backtest
-    engine = BacktestEngine(
-        capital=capital,
+    # Run the unified pipeline: filter tradability -> equal weight ->
+    # smoother (dead-zone) -> industry cap -> position limit -> engine.
+    # rebalance_days sparsifies signals before allocation (inside pipeline).
+    result = run_pipeline(
+        signals,
+        data,
+        capital,
+        max_weight=max_weight,
+        exposure=exposure,
+        industry_map=industry_map,
+        max_industry_weight=max_industry_weight,
         stop_loss=stop_loss,
         take_profit=take_profit,
         atr_stop_loss=atr_stop_loss,
         trading_cost=trading_cost,
         circuit_breaker=circuit_breaker,
+        dead_zone=dead_zone,
+        rebalance_days=rebalance_days,
     )
-    result = engine.run(positions, prices, market_data=data)
 
     return {
         "overall": compute_continuous_metrics(result["equity_curve"], capital),

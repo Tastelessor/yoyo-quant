@@ -11,9 +11,8 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-from src.backtest.engine import BacktestEngine, TradingCost
-from src.portfolio.allocator import equal_weight
-from src.risk.tradability import enforce_t1, filter_tradable
+from src.backtest.engine import TradingCost
+from src.backtest.pipeline import build_positions, run_backtest, run_pipeline
 
 
 def generate_windows(
@@ -85,9 +84,12 @@ def compute_overall_metrics(
     """
     if equity_curve.empty:
         return {
-            "total_return": 0.0, "annual_return": 0.0,
-            "sharpe_ratio": 0.0, "max_drawdown": 0.0,
-            "per_period_sharpe_mean": 0.0, "per_period_sharpe_std": 0.0,
+            "total_return": 0.0,
+            "annual_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown": 0.0,
+            "per_period_sharpe_mean": 0.0,
+            "per_period_sharpe_std": 0.0,
             "per_period_ir": 0.0,
         }
 
@@ -222,9 +224,12 @@ def walk_forward_backtest(
     empty_result = {
         "per_period": pd.DataFrame(),
         "overall": {
-            "total_return": 0.0, "annual_return": 0.0,
-            "sharpe_ratio": 0.0, "max_drawdown": 0.0,
-            "per_period_sharpe_mean": 0.0, "per_period_sharpe_std": 0.0,
+            "total_return": 0.0,
+            "annual_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown": 0.0,
+            "per_period_sharpe_mean": 0.0,
+            "per_period_sharpe_std": 0.0,
             "per_period_ir": 0.0,
         },
         "equity_curve": pd.DataFrame(columns=["date", "equity"]),
@@ -254,9 +259,7 @@ def walk_forward_backtest(
             pool = stock_selector_fn(data)
             test_dates_set = set(test_data["date"].unique())
             pool_filtered = {
-                d: codes
-                for d, codes in pool.items()
-                if d in test_dates_set
+                d: codes for d, codes in pool.items() if d in test_dates_set
             }
             mask = pd.Series(False, index=test_data.index)
             for d, allowed in pool_filtered.items():
@@ -265,30 +268,43 @@ def walk_forward_backtest(
                 )
             test_data = test_data[mask].copy()
             if test_data.empty:
-                results.append({
-                    "period": i, "train_start": train_start,
-                    "train_end": train_end, "test_start": test_start,
-                    "test_end": test_end, "total_return": 0.0,
-                    "annual_return": 0.0, "sharpe_ratio": 0.0,
-                    "max_drawdown": 0.0, "win_rate": 0.0, "trade_count": 0,
-                })
+                results.append(
+                    {
+                        "period": i,
+                        "train_start": train_start,
+                        "train_end": train_end,
+                        "test_start": test_start,
+                        "test_end": test_end,
+                        "total_return": 0.0,
+                        "annual_return": 0.0,
+                        "sharpe_ratio": 0.0,
+                        "max_drawdown": 0.0,
+                        "win_rate": 0.0,
+                        "trade_count": 0,
+                    }
+                )
                 continue
 
         # Generate signals (signal_fn can re-estimate params on train_data)
         signals = signal_fn(train_data, test_data)
 
         if signals.empty:
-            results.append({
-                "period": i, "train_start": train_start, "train_end": train_end,
-                "test_start": test_start, "test_end": test_end,
-                "total_return": 0.0, "annual_return": 0.0, "sharpe_ratio": 0.0,
-                "max_drawdown": 0.0, "win_rate": 0.0, "trade_count": 0,
-            })
+            results.append(
+                {
+                    "period": i,
+                    "train_start": train_start,
+                    "train_end": train_end,
+                    "test_start": test_start,
+                    "test_end": test_end,
+                    "total_return": 0.0,
+                    "annual_return": 0.0,
+                    "sharpe_ratio": 0.0,
+                    "max_drawdown": 0.0,
+                    "win_rate": 0.0,
+                    "trade_count": 0,
+                }
+            )
             continue
-
-        # Filter tradability on test data
-        signals = filter_tradable(test_data, signals)
-        signals = enforce_t1(signals)
 
         # Compute exposure for test period
         exposure = None
@@ -296,55 +312,29 @@ def walk_forward_backtest(
             test_dates = pd.DatetimeIndex(sorted(test_data["date"].unique()))
             exposure = exposure_fn(test_dates)
 
-        # Allocate positions using running capital (chained from previous period)
-        prices = test_data[["date", "code", "close"]].drop_duplicates()
-        positions = equal_weight(signals, prices, capital=running_capital, exposure=exposure)
-
-        # Position smoothing (dead-zone state machine)
-        if dead_zone > 0:
-            from src.portfolio.smoother import smooth_positions
-
-            # Include previous period's last-day prices so the smoother
-            # can forward-fill close for resurrected stocks.
-            smooth_prices = prices
-            if prev_positions is not None and not prev_positions.empty:
-                prev_date = prev_positions["date"].max()
-                prev_day_prices = data[data["date"] == prev_date][
-                    ["date", "code", "close"]
-                ].drop_duplicates()
-                if not prev_day_prices.empty:
-                    smooth_prices = pd.concat(
-                        [prices, prev_day_prices], ignore_index=True
-                    ).drop_duplicates(subset=["date", "code"], keep="last")
-
-            positions = smooth_positions(
-                positions, prev_positions, smooth_prices,
-                capital=running_capital, exposure=exposure, dead_zone=dead_zone,
-            )
-        prev_positions = positions.copy()
-
-        # Apply industry cap if mapping provided
-        if industry_map is not None:
-            from src.portfolio.industry_cap import apply_industry_cap
-            positions = apply_industry_cap(
-                positions, industry_map, max_industry_weight
-            )
-
-        # Apply position limit
-        from src.risk.position_limit import apply_position_limit
-        positions = apply_position_limit(positions, max_weight=max_weight)
-
-        # Run backtest with chained capital
-        engine = BacktestEngine(
-            capital=running_capital,
+        # Run the unified pipeline: filter tradability -> equal weight ->
+        # smoother (dead-zone) -> industry cap -> position limit -> engine.
+        # market_data is the full dataset so the smoother can look up the
+        # previous period's last-day prices for cold start.
+        result = run_pipeline(
+            signals,
+            test_data,
+            running_capital,
+            max_weight=max_weight,
+            exposure=exposure,
+            industry_map=industry_map,
+            max_industry_weight=max_industry_weight,
             stop_loss=stop_loss,
             take_profit=take_profit,
             atr_stop_loss=atr_stop_loss,
             trading_cost=trading_cost,
             circuit_breaker=circuit_breaker,
+            dead_zone=dead_zone,
+            prev_positions=prev_positions,
+            market_data=data,
+            starting_capital=running_capital,
         )
-        result = engine.run(positions, prices, market_data=data,
-                           starting_capital=running_capital)
+        prev_positions = result["carry_positions"].copy()
         m = result["metrics"]
 
         # Collect equity curve entries (skip first row — it duplicates prev period end)
@@ -360,18 +350,23 @@ def walk_forward_backtest(
         else:
             running_capital = running_capital * (1 + m["total_return"])
 
-        results.append({
-            "period": i, "train_start": train_start, "train_end": train_end,
-            "test_start": test_start, "test_end": test_end,
-            "total_return": m["total_return"],
-            "annual_return": m["annual_return"],
-            "sharpe_ratio": m["sharpe_ratio"],
-            "max_drawdown": m["max_drawdown"],
-            "win_rate": m["win_rate"],
-            "trade_count": m["trade_count"],
-            "total_cost": m["total_cost"],
-            "cost_ratio": m["cost_ratio"],
-        })
+        results.append(
+            {
+                "period": i,
+                "train_start": train_start,
+                "train_end": train_end,
+                "test_start": test_start,
+                "test_end": test_end,
+                "total_return": m["total_return"],
+                "annual_return": m["annual_return"],
+                "sharpe_ratio": m["sharpe_ratio"],
+                "max_drawdown": m["max_drawdown"],
+                "win_rate": m["win_rate"],
+                "trade_count": m["trade_count"],
+                "total_cost": m["total_cost"],
+                "cost_ratio": m["cost_ratio"],
+            }
+        )
 
     per_period = pd.DataFrame(results)
     equity_curve = pd.DataFrame(equity_rows, columns=["date", "equity"])
@@ -399,34 +394,21 @@ def _run_silo_pipeline(
 
     Returns (positions, new_prev_positions).
     """
-    from src.portfolio.smoother import smooth_positions
-
     signals = signal_fn(train_data, test_data)
     if signals.empty:
-        return pd.DataFrame(columns=["date", "code", "weight", "shares"]), prev_positions
+        return pd.DataFrame(
+            columns=["date", "code", "weight", "shares"]
+        ), prev_positions
 
-    signals = filter_tradable(test_data, signals)
-    signals = enforce_t1(signals)
-
-    prices = test_data[["date", "code", "close"]].drop_duplicates()
-    positions = equal_weight(signals, prices, capital=silo_capital, exposure=exposure)
-
-    if dead_zone > 0:
-        smooth_prices = prices
-        if prev_positions is not None and not prev_positions.empty:
-            prev_date = prev_positions["date"].max()
-            prev_day_prices = data[data["date"] == prev_date][
-                ["date", "code", "close"]
-            ].drop_duplicates()
-            if not prev_day_prices.empty:
-                smooth_prices = pd.concat(
-                    [prices, prev_day_prices], ignore_index=True
-                ).drop_duplicates(subset=["date", "code"], keep="last")
-
-        positions = smooth_positions(
-            positions, prev_positions, smooth_prices,
-            capital=silo_capital, exposure=exposure, dead_zone=dead_zone,
-        )
+    positions, _ = build_positions(
+        signals,
+        test_data,
+        silo_capital,
+        exposure=exposure,
+        dead_zone=dead_zone,
+        prev_positions=prev_positions,
+        market_data=data,
+    )
 
     return positions, positions.copy() if not positions.empty else prev_positions
 
@@ -462,7 +444,9 @@ def _merge_silo_positions(
     # Outer join merge: sum weights for overlapping (date, code)
     merged = scaled_frames[0]
     for frame in scaled_frames[1:]:
-        merged = merged.merge(frame, on=["date", "code"], how="outer", suffixes=("", "_r"))
+        merged = merged.merge(
+            frame, on=["date", "code"], how="outer", suffixes=("", "_r")
+        )
         merged["weight"] = merged["weight"].fillna(0.0) + merged["weight_r"].fillna(0.0)
         merged = merged.drop(columns=["weight_r"])
 
@@ -472,7 +456,9 @@ def _merge_silo_positions(
     merged["weight"] = merged["weight"] / date_sums
 
     # Recompute shares — select only key + weight before merging with prices
-    merged = merged[["date", "code", "weight"]].merge(prices, on=["date", "code"], how="left")
+    merged = merged[["date", "code", "weight"]].merge(
+        prices, on=["date", "code"], how="left"
+    )
     if exposure is not None:
         exposure_df = exposure.rename("exposure").reset_index()
         exposure_df.columns = ["date", "exposure"]
@@ -482,8 +468,16 @@ def _merge_silo_positions(
         merged["exposure"] = 1.0
 
     merged["shares"] = (
-        np.floor(capital * merged["exposure"] * merged["weight"] / merged["close"] / 100) * 100
-    ).clip(lower=0).fillna(0).astype(int)
+        (
+            np.floor(
+                capital * merged["exposure"] * merged["weight"] / merged["close"] / 100
+            )
+            * 100
+        )
+        .clip(lower=0)
+        .fillna(0)
+        .astype(int)
+    )
 
     return merged[["date", "code", "weight", "shares"]]
 
@@ -539,9 +533,12 @@ def walk_forward_multi_silo(
     empty_result = {
         "per_period": pd.DataFrame(),
         "overall": {
-            "total_return": 0.0, "annual_return": 0.0,
-            "sharpe_ratio": 0.0, "max_drawdown": 0.0,
-            "per_period_sharpe_mean": 0.0, "per_period_sharpe_std": 0.0,
+            "total_return": 0.0,
+            "annual_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown": 0.0,
+            "per_period_sharpe_mean": 0.0,
+            "per_period_sharpe_std": 0.0,
             "per_period_ir": 0.0,
         },
         "equity_curve": pd.DataFrame(columns=["date", "equity"]),
@@ -580,49 +577,70 @@ def walk_forward_multi_silo(
         for j, silo in enumerate(silos):
             silo_capital = running_capital * silo["weight"]
             pos, new_prev = _run_silo_pipeline(
-                test_data, silo["signal_fn"], train_data,
-                running_capital, exposure, dead_zone,
-                silo_prev_positions[j], data, silo_capital,
+                test_data,
+                silo["signal_fn"],
+                train_data,
+                running_capital,
+                exposure,
+                dead_zone,
+                silo_prev_positions[j],
+                data,
+                silo_capital,
             )
             silo_positions_list.append(pos)
             silo_prev_positions[j] = new_prev
 
         # Merge silos at weight level
         positions = _merge_silo_positions(
-            silo_positions_list, silo_weight_fractions, prices, running_capital, exposure,
+            silo_positions_list,
+            silo_weight_fractions,
+            prices,
+            running_capital,
+            exposure,
         )
 
         if positions.empty:
-            results.append({
-                "period": i, "train_start": train_start, "train_end": train_end,
-                "test_start": test_start, "test_end": test_end,
-                "total_return": 0.0, "annual_return": 0.0, "sharpe_ratio": 0.0,
-                "max_drawdown": 0.0, "win_rate": 0.0, "trade_count": 0,
-            })
+            results.append(
+                {
+                    "period": i,
+                    "train_start": train_start,
+                    "train_end": train_end,
+                    "test_start": test_start,
+                    "test_end": test_end,
+                    "total_return": 0.0,
+                    "annual_return": 0.0,
+                    "sharpe_ratio": 0.0,
+                    "max_drawdown": 0.0,
+                    "win_rate": 0.0,
+                    "trade_count": 0,
+                }
+            )
             continue
 
         # Apply industry cap on merged portfolio
         if industry_map is not None:
             from src.portfolio.industry_cap import apply_industry_cap
-            positions = apply_industry_cap(
-                positions, industry_map, max_industry_weight
-            )
+
+            positions = apply_industry_cap(positions, industry_map, max_industry_weight)
 
         # Apply position limit on merged portfolio
         from src.risk.position_limit import apply_position_limit
+
         positions = apply_position_limit(positions, max_weight=max_weight)
 
         # Run single backtest engine with chained capital
-        engine = BacktestEngine(
+        result = run_backtest(
+            positions,
+            prices,
+            data,
             capital=running_capital,
+            starting_capital=running_capital,
             stop_loss=stop_loss,
             take_profit=take_profit,
             atr_stop_loss=atr_stop_loss,
             trading_cost=trading_cost,
             circuit_breaker=circuit_breaker,
         )
-        result = engine.run(positions, prices, market_data=data,
-                           starting_capital=running_capital)
         m = result["metrics"]
 
         # Collect equity curve
@@ -637,18 +655,23 @@ def walk_forward_multi_silo(
         else:
             running_capital = running_capital * (1 + m["total_return"])
 
-        results.append({
-            "period": i, "train_start": train_start, "train_end": train_end,
-            "test_start": test_start, "test_end": test_end,
-            "total_return": m["total_return"],
-            "annual_return": m["annual_return"],
-            "sharpe_ratio": m["sharpe_ratio"],
-            "max_drawdown": m["max_drawdown"],
-            "win_rate": m["win_rate"],
-            "trade_count": m["trade_count"],
-            "total_cost": m["total_cost"],
-            "cost_ratio": m["cost_ratio"],
-        })
+        results.append(
+            {
+                "period": i,
+                "train_start": train_start,
+                "train_end": train_end,
+                "test_start": test_start,
+                "test_end": test_end,
+                "total_return": m["total_return"],
+                "annual_return": m["annual_return"],
+                "sharpe_ratio": m["sharpe_ratio"],
+                "max_drawdown": m["max_drawdown"],
+                "win_rate": m["win_rate"],
+                "trade_count": m["trade_count"],
+                "total_cost": m["total_cost"],
+                "cost_ratio": m["cost_ratio"],
+            }
+        )
 
     per_period = pd.DataFrame(results)
     equity_curve = pd.DataFrame(equity_rows, columns=["date", "equity"])

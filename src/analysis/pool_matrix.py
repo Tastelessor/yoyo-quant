@@ -11,10 +11,7 @@ import warnings
 
 import pandas as pd
 
-from src.backtest.engine import BacktestEngine
-from src.portfolio.allocator import equal_weight
-from src.risk.position_limit import apply_position_limit
-from src.risk.tradability import enforce_t1, filter_tradable
+from src.backtest.pipeline import run_pipeline
 from src.strategies.registry import get_strategy
 
 logger = logging.getLogger(__name__)
@@ -66,8 +63,6 @@ def run_matrix(
                 rows.append(_nan_row(spec["name"], pool_name))
             continue
 
-        prices = pool_data[["date", "code", "close"]]
-
         for spec in strategy_specs:
             strategy_name = spec["name"]
             params = spec.get("params") or {}
@@ -84,12 +79,9 @@ def run_matrix(
 
             try:
                 signals = strategy.generate_signal(pool_data)
-                filtered = filter_tradable(pool_data, signals)
-                final = enforce_t1(filtered)
-                positions = equal_weight(final, prices, capital=capital)
-                positions = apply_position_limit(positions, max_weight=max_weight)
-                engine = BacktestEngine(capital=capital)
-                result = engine.run(positions, prices)
+                result = run_pipeline(
+                    signals, pool_data, capital, max_weight=max_weight
+                )
                 metrics = result["metrics"]
             except Exception:
                 logger.warning(
@@ -100,11 +92,13 @@ def run_matrix(
                 )
                 metrics = _zero_metrics()
 
-            rows.append({
-                "strategy": strategy_name,
-                "pool": pool_name,
-                **metrics,
-            })
+            rows.append(
+                {
+                    "strategy": strategy_name,
+                    "pool": pool_name,
+                    **metrics,
+                }
+            )
 
     return pd.DataFrame(rows)
 

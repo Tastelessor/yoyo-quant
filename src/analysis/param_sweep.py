@@ -7,16 +7,13 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+from src.backtest.pipeline import run_pipeline
 
-from src.backtest.engine import BacktestEngine
-from src.portfolio.allocator import equal_weight
-from src.risk.position_limit import apply_position_limit
-from src.risk.tradability import enforce_t1, filter_tradable
+logger = logging.getLogger(__name__)
 
 
 def build_grid(param_grid: dict[str, list]) -> list[dict]:
@@ -54,7 +51,8 @@ def run_sweep(
     Parameters
     ----------
     signal_gen : callable
-        信号生成函数，签名 (data, **params) -> DataFrame(date, code, signal, confidence)。
+        信号生成函数，签名 (data, **params)
+        -> DataFrame(date, code, signal, confidence)。
     param_grid : dict
         参数名到候选值列表的映射。
     data : DataFrame
@@ -102,13 +100,7 @@ def _run_single(
 ) -> dict:
     """执行单组参数的完整回测管道，返回绩效指标。"""
     signals = signal_gen(data, **params)
-    filtered = filter_tradable(data, signals)
-    final = enforce_t1(filtered)
-    prices = data[["date", "code", "close"]]
-    positions = equal_weight(final, prices, capital=capital)
-    positions = apply_position_limit(positions, max_weight=max_weight)
-    engine = BacktestEngine(capital=capital)
-    result = engine.run(positions, prices)
+    result = run_pipeline(signals, data, capital, max_weight=max_weight)
     return result["metrics"]
 
 
