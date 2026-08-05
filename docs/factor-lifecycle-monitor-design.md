@@ -15,13 +15,13 @@
 | 决策点 | 结论 |
 |--------|------|
 | 评估形态 | 持续监控优先（定期跑 + 状态存储 + 趋势/预警输出） |
-| 数据范围 | 全市场；**第一版先用现有 csi300 数据跑通管道**，全市场 2 年数据作为独立前置任务 |
+| 数据范围 | 全市场近 2 年；**直接全量方案，不设 csi300 分阶段**（数据准备为前置任务，见 §10） |
 | 历史长度 | 近 2 年（AI 量化时代因子衰减加速，长历史反而找不出好因子） |
 | 失效判定 | 双轨：滚动 IR 0.7/0.3 仅画参考线；判定用滚动 t 统计量（|t|>2 活跃、<1 失效，连续 ≥20 交易日才切换） |
 | 因子范围 | `kind="single"` 量价类，`list_factors()` 动态发现，不 hardcode |
 | 实现方案 | 模块化：`factors/evaluation.py` 滚动原语 + `analysis/factor_monitor.py` + `yq factor monitor` + `analysis/plot.py` |
 | 增量策略 | 默认尾部增量（每次 ~1 分钟），`--full` 全量重算留给冷启动/校准 |
-| 数据准备 | 先 csi300 补市场状态列跑通 → 再拉全市场 2 年（tushare，需限频处理） |
+| 数据准备 | 拉全市场近 2 年数据（含市场状态列）为前置任务，见 §10；监控管道开发用合成数据验证，不阻塞 |
 
 ## 3. 核心概念
 
@@ -144,10 +144,11 @@ yq factor monitor \
 - `plot_factor_lifecycle`：双轴——左轴滚动 IR（画 0.7/0.3 参考线），右轴 t 统计量（画 +2/+1 判定线），背景色带按状态着色（active 绿 / decaying 黄 / dead 红）。
 - `plot_factor_health_heatmap`：x=时间、y=因子（或因子×窗口），颜色=滚动 IR 或状态编码，一眼扫出全库衰减趋势。
 
-## 10. 数据准备前置任务（独立，可与监控开发并行）
+## 10. 数据准备前置任务（全量方案，独立于监控开发，可并行）
 
-1. **csi300 补市场状态列**：现有 `data/clean/csi300_ohlcv.parquet` 只有 OHLCV，缺 `limit_up/limit_down/is_suspended`。优先 tushare 拉取；不可用则按价格推断（涨停 ≈ `close == round(prev_close * 1.1, 2)` 等，需注意推断局限）。没有状态列时 `exclude_untradable` 会静默失效，IC 被不可交易日污染。
-2. **全市场近 2 年**：data 模块拉全市场日线（约 5000 股 × 500 日 ≈ 250 万行，tushare 限频需分批/节流）+ 市场状态标注 → `data/clean/full_market_ohlcv.parquet`。
+1. **全市场近 2 年**：data 模块拉全市场日线（约 5000 股 × 500 日 ≈ 250 万行，tushare 限频需分批/节流）+ 市场状态标注 → `data/clean/full_market_ohlcv.parquet`。
+2. **市场状态列必须齐备**：数据须含 `limit_up / limit_down / is_suspended` 布尔列；缺列时 `exclude_untradable` 静默失效，IC 会被涨跌停/停牌污染。若 tushare 状态字段不可用，可用价格推断（涨停 ≈ `close == round(prev_close * 1.1, 2)` 等）兜底，但需注明推断局限。
+3. **开发期验证**：监控管道开发与测试用合成数据（见 §11），无需等全市场数据；全市场数据就绪后首跑即全量。
 
 ## 11. 测试计划（TDD，先写测试再实现）
 
