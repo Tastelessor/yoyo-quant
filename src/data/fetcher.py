@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-_PROXY_URL = "http://124.222.60.121:8020/"
+_PROXY_URL = "https://quantdata888.duckdns.org"
 
 
 def _to_ts_code(code: str) -> str:
@@ -47,8 +48,9 @@ def fetch_daily(code: str, start: str, end: str) -> pd.DataFrame:
 
     ts_code = _to_ts_code(code)
 
-    # Retry with backoff on rate limit
+    # Retry with backoff on rate limit / transient proxy failures
     raw = None
+    retryable = ("过快", "频率", "unavailable", "timeout", "timed out")
     for attempt in range(3):
         try:
             raw = api.daily(
@@ -58,23 +60,37 @@ def fetch_daily(code: str, start: str, end: str) -> pd.DataFrame:
             )
             break
         except Exception as e:
-            if "过快" in str(e) or "频率" in str(e):
+            if any(k in str(e) for k in retryable):
                 wait = 2 ** (attempt + 1)
-                logger.warning("Rate limited on %s, retrying in %ds...", code, wait)
+                logger.warning(
+                    "Temporary failure on %s (%s), retrying in %ds...",
+                    code,
+                    e,
+                    wait,
+                )
                 time.sleep(wait)
             else:
                 raise
 
     if raw is None or raw.empty:
         return pd.DataFrame(
-            columns=["date", "code", "open", "high", "low", "close", "volume"]
+            columns=[
+                "date",
+                "code",
+                "open",
+                "high",
+                "low",
+                "close",
+                "pre_close",
+                "volume",
+            ]
         )
 
     df = raw.rename(columns={"trade_date": "date", "vol": "volume"})
     df["code"] = code
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date").reset_index(drop=True)
-    return df[["date", "code", "open", "high", "low", "close", "volume"]]
+    return df[["date", "code", "open", "high", "low", "close", "pre_close", "volume"]]
 
 
 def fetch_index_daily(code: str, start: str, end: str) -> pd.DataFrame:
@@ -110,14 +126,23 @@ def fetch_index_daily(code: str, start: str, end: str) -> pd.DataFrame:
 
     if raw is None or raw.empty:
         return pd.DataFrame(
-            columns=["date", "code", "open", "high", "low", "close", "volume"]
+            columns=[
+                "date",
+                "code",
+                "open",
+                "high",
+                "low",
+                "close",
+                "pre_close",
+                "volume",
+            ]
         )
 
     df = raw.rename(columns={"trade_date": "date", "vol": "volume"})
     df["code"] = code
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date").reset_index(drop=True)
-    return df[["date", "code", "open", "high", "low", "close", "volume"]]
+    return df[["date", "code", "open", "high", "low", "close", "pre_close", "volume"]]
 
 
 def fetch_index_constituents(
@@ -197,11 +222,16 @@ def fetch_daily_batch(
     raw_dir: Path | str,
     sleep_sec: float = 0.5,
     progress: bool = True,
+    workers: int = 1,
 ) -> pd.DataFrame:
-    """批量获取日线行情，带缓存和限速。
+    """批量获取日线行情，带缓存和限速（支持并发）。
 
     对每只股票先检查 parquet 缓存，未命中时调用 fetch_daily 并保存。
-    未缓存的 API 调用间会 sleep 以尊重频率限制。
+    未缓存的 API 调用后 sleep 以尊重频率限制。
+
+    workers=1（默认）为串行：保持旧行为，未缓存调用之间 sleep；
+    workers>1 时用线程池并发，每个 worker 在每次 API 调用后 sleep。
+    任一只股票失败会抛出异常，已保存的缓存保留（断点可续）。
 
     Parameters
     ----------
@@ -212,9 +242,11 @@ def fetch_daily_batch(
     raw_dir : Path | str
         parquet 缓存目录。
     sleep_sec : float
-        未缓存 API 调用间的 sleep 秒数。
+        未缓存 API 调用后的 sleep 秒数（串行：调用间；并发：每 worker 调用后）。
     progress : bool
         是否每 50 只打印进度。
+    workers : int
+        并发线程数。默认 1（串行）。
 
     Returns
     -------
@@ -224,32 +256,57 @@ def fetch_daily_batch(
     from data.storage import save_parquet
 
     raw_dir = Path(raw_dir)
-    frames: list[pd.DataFrame] = []
-    fetched = 0
 
-    for i, code in enumerate(codes):
+    def _fetch_one(code: str) -> pd.DataFrame:
         cache_path = raw_dir / f"{code}.parquet"
         if cache_path.exists():
-            df = pd.read_parquet(cache_path)
-        else:
-            df = fetch_daily(code, start, end)
-            save_parquet(df, cache_path)
-            fetched += 1
-            if fetched > 1 and sleep_sec > 0:
-                time.sleep(sleep_sec)
-        frames.append(df)
+            return pd.read_parquet(cache_path)
+        df = fetch_daily(code, start, end)
+        save_parquet(df, cache_path)
+        if sleep_sec > 0:
+            time.sleep(sleep_sec)
+        return df
 
-        if progress and (i + 1) % 50 == 0:
-            logger.info(
-                "Loaded %d / %d stocks (%d fetched from API)",
-                i + 1,
-                len(codes),
-                fetched,
-            )
+    def _log_progress(done: int) -> None:
+        logger.info("Loaded %d / %d stocks", done, len(codes))
+
+    frames: list[pd.DataFrame] = []
+
+    if workers <= 1:
+        fetched = 0
+        for i, code in enumerate(codes):
+            cache_path = raw_dir / f"{code}.parquet"
+            if cache_path.exists():
+                frames.append(pd.read_parquet(cache_path))
+            else:
+                df = fetch_daily(code, start, end)
+                save_parquet(df, cache_path)
+                fetched += 1
+                if fetched > 1 and sleep_sec > 0:
+                    time.sleep(sleep_sec)
+                frames.append(df)
+            if progress and (i + 1) % 50 == 0:
+                _log_progress(i + 1)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(_fetch_one, code) for code in codes]
+            for i, future in enumerate(as_completed(futures), 1):
+                frames.append(future.result())
+                if progress and i % 50 == 0:
+                    _log_progress(i)
 
     if not frames:
         return pd.DataFrame(
-            columns=["date", "code", "open", "high", "low", "close", "volume"]
+            columns=[
+                "date",
+                "code",
+                "open",
+                "high",
+                "low",
+                "close",
+                "pre_close",
+                "volume",
+            ]
         )
 
     return pd.concat(frames, ignore_index=True)
@@ -307,8 +364,11 @@ def fetch_all_stocks(
 
     # Exclude ST stocks
     mask_st = df["name"].str.contains("ST", case=False, na=False)
-    # Exclude 北交所 (starts with 8 or 4)
-    mask_bj = df["code"].str.startswith(("8", "4"))
+    # Exclude 北交所：market 字段优先（覆盖 43/83/87/92 等全部北交所代码段），
+    # 前缀 (4, 8, 920) 兜底兼容 market 列缺失的旧缓存
+    mask_bj = df["code"].str.startswith(("4", "8", "920"))
+    if "market" in df.columns:
+        mask_bj = mask_bj | df["market"].eq("北交所")
     df = df[~mask_st & ~mask_bj].reset_index(drop=True)
 
     cache_dir.mkdir(parents=True, exist_ok=True)

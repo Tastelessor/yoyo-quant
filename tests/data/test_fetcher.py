@@ -10,6 +10,7 @@ from data.fetcher import (
     fetch_daily_batch,
     fetch_fundamentals,
     fetch_index_constituents,
+    fetch_index_daily,
 )
 
 
@@ -24,6 +25,7 @@ def fake_tushare_data():
             "close": [10.3, 10.8, 10.6, 11.0, 11.2],
             "high": [10.5, 11.0, 10.9, 11.2, 11.5],
             "low": [9.8, 10.2, 10.1, 10.6, 10.8],
+            "pre_close": [10.0, 10.3, 10.8, 10.6, 11.0],
             "vol": [1_000_000, 1_200_000, 900_000, 1_500_000, 1_100_000],
         }
     )
@@ -40,10 +42,11 @@ def mock_api(fake_tushare_data):
 
 
 def test_fetch_daily_returns_ohlcv(mock_api):
-    """fetch_daily 应返回符合 OHLCV schema 的 DataFrame。"""
+    """fetch_daily 应返回 OHLCV schema 的超集，并包含 pre_close。"""
     with patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}):
         df = fetch_daily("000001", "2024-01-02", "2024-01-08")
-    assert list(df.columns) == OHLCV_SCHEMA
+    assert set(OHLCV_SCHEMA).issubset(df.columns)
+    assert "pre_close" in df.columns
     assert len(df) == 5
 
 
@@ -57,6 +60,14 @@ def test_fetch_daily_column_mapping(mock_api):
     assert df["high"].iloc[0] == 10.5
     assert df["low"].iloc[0] == 9.8
     assert df["volume"].iloc[0] == 1_000_000
+
+
+def test_fetch_daily_maps_pre_close(mock_api):
+    """tushare pre_close 列应正确映射。"""
+    with patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}):
+        df = fetch_daily("000001", "2024-01-02", "2024-01-08")
+    assert df["pre_close"].iloc[0] == 10.0
+    assert df["pre_close"].iloc[1] == 10.3
 
 
 def test_fetch_daily_date_dtype(mock_api):
@@ -91,7 +102,8 @@ def test_fetch_daily_empty_returns_schema(mock_api):
     mock_api.daily.return_value = pd.DataFrame()
     with patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}):
         df = fetch_daily("000001", "2024-01-01", "2024-01-01")
-    assert list(df.columns) == OHLCV_SCHEMA
+    assert set(OHLCV_SCHEMA).issubset(df.columns)
+    assert "pre_close" in df.columns
     assert len(df) == 0
 
 
@@ -100,6 +112,66 @@ def test_fetch_daily_no_token_raises():
     with patch.dict("os.environ", {}, clear=True):
         with pytest.raises(ValueError, match="TUSHARE_TOKEN 未设置"):
             fetch_daily("000001", "2024-01-01", "2024-01-01")
+
+
+# --- fetch_index_daily ---
+
+
+def test_fetch_index_daily_includes_pre_close():
+    """fetch_index_daily 应返回含 pre_close 的 OHLCV 超集。"""
+    mock_api = MagicMock()
+    mock_api.index_daily.return_value = pd.DataFrame(
+        {
+            "ts_code": ["000300.SH"] * 2,
+            "trade_date": ["20260105", "20260106"],
+            "open": [4000.0, 4050.0],
+            "high": [4020.0, 4070.0],
+            "low": [3980.0, 4040.0],
+            "close": [4010.0, 4060.0],
+            "pre_close": [3990.0, 4010.0],
+            "vol": [1_000_000, 1_200_000],
+        }
+    )
+    with (
+        patch("data.fetcher.ts") as mock_ts,
+        patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
+    ):
+        mock_ts.pro_api.return_value = mock_api
+        df = fetch_index_daily("000300", "2026-01-05", "2026-01-06")
+    assert set(OHLCV_SCHEMA).issubset(df.columns)
+    assert df["pre_close"].iloc[0] == 3990.0
+    assert df["pre_close"].iloc[1] == 4010.0
+
+
+def test_fetch_daily_retries_on_temporary_unavailable(mock_api, fake_tushare_data):
+    """proxy 瞬时 'service temporarily unavailable' 应重试后成功。"""
+    responses = [
+        Exception("service temporarily unavailable"),
+        Exception("service temporarily unavailable"),
+        fake_tushare_data,
+    ]
+    mock_api.daily.side_effect = responses
+    with (
+        patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
+        patch("data.fetcher.time.sleep") as mock_sleep,
+    ):
+        df = fetch_daily("000001", "2024-01-02", "2024-01-08")
+    assert len(df) == 5
+    assert mock_api.daily.call_count == 3
+    assert mock_sleep.call_count == 2
+
+
+def test_fetch_daily_does_not_retry_on_token_error(mock_api):
+    """token 错误等确定性错误不应重试，直接抛出。"""
+    mock_api.daily.side_effect = Exception("token不对")
+    with (
+        patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
+        patch("data.fetcher.time.sleep") as mock_sleep,
+    ):
+        with pytest.raises(Exception, match="token不对"):
+            fetch_daily("000001", "2024-01-02", "2024-01-08")
+    assert mock_api.daily.call_count == 1
+    mock_sleep.assert_not_called()
 
 
 # --- fetch_index_constituents ---
@@ -305,7 +377,7 @@ def test_fetch_daily_batch_returns_concatenated(tmp_path, fake_daily_df):
 
 
 def test_fetch_daily_batch_sleeps_between_uncached(tmp_path, fake_daily_df):
-    """未缓存的 API 调用间应有 sleep。"""
+    """未缓存的 API 调用间应有 sleep（默认串行）。"""
     with (
         patch("data.fetcher.fetch_daily", return_value=fake_daily_df),
         patch("data.fetcher.time.sleep") as mock_sleep,
@@ -321,19 +393,74 @@ def test_fetch_daily_batch_sleeps_between_uncached(tmp_path, fake_daily_df):
     mock_sleep.assert_called_with(0.5)
 
 
+def test_fetch_daily_batch_concurrent_workers_sleep_per_worker(tmp_path, fake_daily_df):
+    """workers>1 时并发拉取：每 worker 每次 API 调用后 sleep，结果正常拼接。"""
+
+    def make_df(code):
+        df = fake_daily_df.copy()
+        df["code"] = code
+        return df
+
+    with (
+        patch(
+            "data.fetcher.fetch_daily",
+            side_effect=lambda code, *a, **k: make_df(code),
+        ),
+        patch("data.fetcher.time.sleep") as mock_sleep,
+    ):
+        result = fetch_daily_batch(
+            ["000001", "600519", "000858"],
+            "2024-01-01",
+            "2024-01-31",
+            raw_dir=tmp_path,
+            sleep_sec=0.5,
+            workers=3,
+        )
+    assert len(result) == 6
+    assert set(result["code"].unique()) == {"000001", "600519", "000858"}
+    # 并发：3 个 worker 各 sleep 1 次（串行下是 2 次）
+    assert mock_sleep.call_count == 3
+
+
+def test_fetch_daily_batch_worker_failure_propagates(tmp_path, fake_daily_df):
+    """并发下某只股票拉取失败应抛出异常，不静默吞掉。"""
+    fake_daily_df.to_parquet(tmp_path / "000001.parquet", index=False)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    with patch("data.fetcher.fetch_daily", side_effect=boom) as mock_fetch:
+        with pytest.raises(RuntimeError, match="boom"):
+            fetch_daily_batch(
+                ["000001", "600519"],
+                "2024-01-01",
+                "2024-01-31",
+                raw_dir=tmp_path,
+                workers=2,
+            )
+    # 有缓存的不调 API；未缓存的 600519 被尝试拉取
+    mock_fetch.assert_called_once_with("600519", "2024-01-01", "2024-01-31")
+
+
 # --- fetch_all_stocks ---
 
 
 def test_fetch_all_stocks_returns_dataframe(tmp_path):
-    """应返回排除 ST 和北交所的股票列表。"""
+    """应返回排除 ST 和北交所（含 920 新代码段）的股票列表。"""
     mock_api = MagicMock()
     mock_api.stock_basic.return_value = pd.DataFrame(
         {
-            "ts_code": ["000001.SZ", "600519.SH", "000004.SZ", "830001.BJ"],
-            "name": ["平安银行", "贵州茅台", "*ST国华", "某北交所"],
-            "industry": ["银行", "白酒", "软件", "制造"],
-            "market": ["主板", "主板", "主板", "北交所"],
-            "list_date": ["19910403", "20010827", "19901201", "20210101"],
+            "ts_code": [
+                "000001.SZ",
+                "600519.SH",
+                "000004.SZ",
+                "830001.BJ",
+                "920000.BJ",
+            ],
+            "name": ["平安银行", "贵州茅台", "*ST国华", "某北交所", "北交所920"],
+            "industry": ["银行", "白酒", "软件", "制造", "制造"],
+            "market": ["主板", "主板", "主板", "北交所", "北交所"],
+            "list_date": ["19910403", "20010827", "19901201", "20210101", "20240101"],
         }
     )
     with (
@@ -346,8 +473,32 @@ def test_fetch_all_stocks_returns_dataframe(tmp_path):
     assert "600519" in result["code"].values
     # ST should be excluded
     assert "*ST国华" not in result["name"].values
-    # 北交所 should be excluded
+    # 北交所 (830/920) should be excluded
     assert "830001" not in result["code"].values
+    assert "920000" not in result["code"].values
+
+
+def test_fetch_all_stocks_excludes_bse_43x(tmp_path):
+    """北交所 43 开头代码（原新三板平移，如 430047）应被排除。"""
+    mock_api = MagicMock()
+    mock_api.stock_basic.return_value = pd.DataFrame(
+        {
+            "ts_code": ["000001.SZ", "430047.BJ", "600519.SH"],
+            "name": ["平安银行", "诺思兰德", "贵州茅台"],
+            "industry": ["银行", "医药", "白酒"],
+            "market": ["主板", "北交所", "主板"],
+            "list_date": ["19910403", "20141103", "20010827"],
+        }
+    )
+    with (
+        patch("data.fetcher.ts") as mock_ts,
+        patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
+    ):
+        mock_ts.pro_api.return_value = mock_api
+        result = fetch_all_stocks(date="2026-05-22", cache_dir=tmp_path)
+    assert "000001" in result["code"].values
+    assert "600519" in result["code"].values
+    assert "430047" not in result["code"].values
 
 
 def test_fetch_all_stocks_uses_cache(tmp_path):
