@@ -25,7 +25,8 @@
 | factors (GTJA 波动率) | ✅ 完成 | volatility_gtja.py: 5 因子 (#78/#97/#100/#161/#175) |
 | factors (GTJA VWAP) | ✅ 完成 | vwap.py: 2 因子 (#120/#124) |
 | factors (GTJA 趋势) | ✅ 完成 | trend.py: 3 因子 (#21/#116/#89) |
-| factors (注册表) | ✅ 完成 | registry.py: 46 因子, 名称/别名/tag 过滤 + 9 tests |
+| factors (注册表) | ✅ 完成 | registry.py: 93 条目（51 single + 5 pair + 37 别名）, 名称/别名/tag/kind 过滤 + run_factor 缓存 + 41 tests |
+| factors (结果缓存) | ✅ 完成 | cache.py: 磁盘 parquet 缓存，键=(因子名, 参数哈希, 数据指纹) + 7 tests |
 | strategies (均值回归) | ✅ 完成 | builtin/mean_reversion.py + 8 tests |
 | strategies (RSI 反转) | ✅ 完成 | builtin/rsi_reversal.py + 10 tests |
 | strategies (动量突破) | ✅ 完成 | builtin/momentum_breakout.py + 9 tests |
@@ -111,8 +112,9 @@ src/
 │   ├── trend.py                 # GTJA 趋势因子 (3)
 │   ├── volume_price.py          # 通用量价因子 (RSI/OBV/ATR/VR)
 │   ├── volatility.py            # HV 因子
-│   ├── cointegration.py         # 协整/半衰期/Kalman Filter
-│   └── registry.py              # 因子注册表 (46 因子)
+│   ├── cache.py                 # 因子结果磁盘缓存 (parquet, 键含参数哈希+数据指纹)
+│   ├── cointegration.py         # 协整/半衰期/Kalman Filter (pair 专用)
+│   └── registry.py              # 因子注册表 (93 条目: 51 single + 5 pair + 37 别名)
 ├── risk/
 │   ├── rules.py                 # Rule ABC + RuleContext
 │   ├── rule_engine.py           # RuleEngine

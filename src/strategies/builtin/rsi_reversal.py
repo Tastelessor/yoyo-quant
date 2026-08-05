@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.volume_price import calc_rsi
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -16,7 +16,10 @@ class RSIReversalStrategy(Strategy):
     name = "rsi_reversal"
 
     def __init__(
-        self, window: int = 14, oversold: float = 30, overbought: float = 70,
+        self,
+        window: int = 14,
+        oversold: float = 30,
+        overbought: float = 70,
     ):
         self.window = window
         self.oversold = oversold
@@ -26,7 +29,7 @@ class RSIReversalStrategy(Strategy):
         if factors is not None and "rsi" in factors.columns:
             rsi = factors["rsi"].values
         else:
-            rsi = calc_rsi(data, window=self.window).values
+            rsi = run_factor("calc_rsi", data, window=self.window).values
 
         signal = pd.Series(0, index=data.index, dtype=int)
         signal[rsi < self.oversold] = 1

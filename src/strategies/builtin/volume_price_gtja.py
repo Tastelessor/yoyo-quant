@@ -4,48 +4,29 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.volume_price_gtja import (
-    calc_candle_body_vol_composite,
-    calc_close_vol_rank_cov_5d,
-    calc_dollar_vol_std_6d,
-    calc_high_vol_rank_corr_3d,
-    calc_money_flow_6d,
-    calc_obv_6d,
-    calc_open_vol_corr_10d,
-    calc_open_vwap_close_vwap,
-    calc_return_1d_times_vol,
-    calc_return_6d_times_vol,
-    calc_shadow_ratio_20d,
-    calc_up_down_vol_ratio_26d,
-    calc_vol_change_pct_5d,
-    calc_vol_macd_9_26_12,
-    calc_vol_rank_intraday_corr_6d,
-    calc_vol_rsi_6d,
-    calc_vwap_vol_rank_corr_5d,
-    calc_williams_r_smoothed_6d,
-)
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
 _FACTOR_COMPUTERS = {
-    "money_flow_6d": calc_money_flow_6d,
-    "up_down_vol_26d": calc_up_down_vol_ratio_26d,
-    "obv_6d": calc_obv_6d,
-    "vol_rank_intraday_corr_6d": calc_vol_rank_intraday_corr_6d,
-    "vol_change_pct_5d": calc_vol_change_pct_5d,
-    "return_6d_times_vol": calc_return_6d_times_vol,
-    "return_1d_times_vol": calc_return_1d_times_vol,
-    "high_vol_rank_corr_3d": calc_high_vol_rank_corr_3d,
-    "close_vol_rank_cov_5d": calc_close_vol_rank_cov_5d,
-    "open_vol_corr_10d": calc_open_vol_corr_10d,
-    "vwap_vol_rank_corr_5d": calc_vwap_vol_rank_corr_5d,
-    "williams_r_smoothed_6d": calc_williams_r_smoothed_6d,
-    "shadow_ratio_20d": calc_shadow_ratio_20d,
-    "candle_body_vol_composite": calc_candle_body_vol_composite,
-    "open_vwap_close_vwap": calc_open_vwap_close_vwap,
-    "dollar_vol_std_6d": calc_dollar_vol_std_6d,
-    "vol_macd_9_26_12": calc_vol_macd_9_26_12,
-    "vol_rsi_6d": calc_vol_rsi_6d,
+    "money_flow_6d": "calc_money_flow_6d",
+    "up_down_vol_26d": "calc_up_down_vol_ratio_26d",
+    "obv_6d": "calc_obv_6d",
+    "vol_rank_intraday_corr_6d": "calc_vol_rank_intraday_corr_6d",
+    "vol_change_pct_5d": "calc_vol_change_pct_5d",
+    "return_6d_times_vol": "calc_return_6d_times_vol",
+    "return_1d_times_vol": "calc_return_1d_times_vol",
+    "high_vol_rank_corr_3d": "calc_high_vol_rank_corr_3d",
+    "close_vol_rank_cov_5d": "calc_close_vol_rank_cov_5d",
+    "open_vol_corr_10d": "calc_open_vol_corr_10d",
+    "vwap_vol_rank_corr_5d": "calc_vwap_vol_rank_corr_5d",
+    "williams_r_smoothed_6d": "calc_williams_r_smoothed_6d",
+    "shadow_ratio_20d": "calc_shadow_ratio_20d",
+    "candle_body_vol_composite": "calc_candle_body_vol_composite",
+    "open_vwap_close_vwap": "calc_open_vwap_close_vwap",
+    "dollar_vol_std_6d": "calc_dollar_vol_std_6d",
+    "vol_macd_9_26_12": "calc_vol_macd_9_26_12",
+    "vol_rsi_6d": "calc_vol_rsi_6d",
 }
 
 DEFAULT_WEIGHTS = {
@@ -130,7 +111,7 @@ def gtja_volume_price_signal(
         factor_df = pd.DataFrame({"date": df["date"], "code": df["code"]})
         for col in active:
             if col in _FACTOR_COMPUTERS:
-                factor_df[col] = _FACTOR_COMPUTERS[col](df).values
+                factor_df[col] = run_factor(_FACTOR_COMPUTERS[col], df).values
 
     if industry_map is not None:
         from src.factors.neutralize import neutralize_factors

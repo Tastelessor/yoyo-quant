@@ -15,13 +15,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.momentum import (
-    calc_momentum_5d_change,
-    calc_momentum_5d_ratio,
-    calc_momentum_6d_return,
-    calc_momentum_20d_change,
-    calc_momentum_20d_return,
-)
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -123,11 +117,11 @@ def gtja_momentum_signal(
             {
                 "date": df["date"],
                 "code": df["code"],
-                "gtja_14": calc_momentum_5d_change(df).values,
-                "gtja_18": calc_momentum_5d_ratio(df).values,
-                "gtja_20": calc_momentum_6d_return(df).values,
-                "gtja_88": calc_momentum_20d_return(df).values,
-                "gtja_106": calc_momentum_20d_change(df).values,
+                "gtja_14": run_factor("calc_momentum_5d_change", df).values,
+                "gtja_18": run_factor("calc_momentum_5d_ratio", df).values,
+                "gtja_20": run_factor("calc_momentum_6d_return", df).values,
+                "gtja_88": run_factor("calc_momentum_20d_return", df).values,
+                "gtja_106": run_factor("calc_momentum_20d_change", df).values,
             }
         )
 

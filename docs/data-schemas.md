@@ -46,6 +46,20 @@
 > 每个因子函数（如 `calc_hv`）返回 `pd.Series`，由调用方组装成下表的 DataFrame。
 > **参数无关设计**：列名不含参数值（用 `hv` 而非 `hv_20`）。参数通过配置传入，缓存键带参数哈希，避免调参时列名变动导致下游断裂。
 
+### 注册表与调用方式
+
+- 所有单股票因子（**kind="single"**）注册在 `src/factors/registry.py`，按名调用统一走 `run_factor(name, df, **params)` 或 `calc_factors(df, names, params={...})`；策略层禁止直接 import 因子函数。
+- 配对专用因子（**kind="pair"**：`calc_spread` / `calc_spread_zscore` / `calc_coint_pvalue` / `calc_half_life` / `kalman_filter_hedge_ratio`）签名与单股票因子不同（双 DataFrame / Series / ndarray 输入，float/ndarray 输出），仅按名发现（`get_factor`），由调用方按配对接口直接调用，不参与 `run_factor` / `calc_factors`。
+- 带参因子（`calc_rsi` / `calc_volume_ratio` / `calc_atr` / `calc_hv` 的 `window` 等）默认参数从函数签名自动提取，`run_factor` 时可用 kwargs 覆盖。
+
+### 因子结果缓存（cache.py）
+
+- 位置：`data/factors/{因子名}/{参数哈希}_{数据指纹}.parquet`（目录可用 `FACTOR_CACHE_DIR` 环境变量覆盖）。
+- 缓存键 = (因子名, 参数哈希, 数据指纹)：调参、数据范围/内容变化均不命中旧缓存；数据指纹基于排序后非 date/code 列的内容哈希，与行顺序无关。
+- 原子写（tmp + rename）；`clear_factor_cache(name=None, cache_dir=None)` 可清理；`run_factor(..., use_cache=False)` 禁用。
+
+### 输出字段
+
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | date | datetime64 | 日期 |

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.volume_price import calc_obv, calc_volume_ratio
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -26,13 +26,18 @@ class MomentumBreakoutStrategy(Strategy):
         self.obv_window = obv_window
 
     def generate_signal(self, data, factors=None):
-        vol_ratio = calc_volume_ratio(data, window=self.vol_window).values
-        obv = calc_obv(data)
+        vol_ratio = run_factor("calc_volume_ratio", data, window=self.vol_window).values
+        obv = run_factor("calc_obv", data)
 
         # OBV trend: rolling mean slope (positive = rising)
-        obv_ma = obv.groupby(data["code"]).rolling(
-            window=self.obv_window, min_periods=1
-        ).mean().droplevel(0).sort_index().values
+        obv_ma = (
+            obv.groupby(data["code"])
+            .rolling(window=self.obv_window, min_periods=1)
+            .mean()
+            .droplevel(0)
+            .sort_index()
+            .values
+        )
         obv_rising = pd.Series(obv_ma, index=data.index) > obv
 
         volume_spike = vol_ratio > self.vol_threshold

@@ -1267,3 +1267,41 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 
 ### 已知环境问题
 - `TUSHARE_TOKEN` 当前已过期（tushare 返回 "token已过期"）：`tests_integration/` 8 个用例失败，与本 Phase 无关（未改动任何 tushare 调用路径）；token 恢复后即可运行。`fetch_trade_calendar` 的真实数据验证同样依赖 token 恢复。
+
+---
+
+## Phase 20: 因子注册表收口 + 结果缓存（2026-06）
+
+### 目标
+消除"24 个已实现因子未注册、策略直接 import 绕过注册表"的口径脱节；因子计算结果可缓存复用。
+
+### 现状（修复前）
+- `FACTOR_REGISTRY` 值类型锁死为 `Callable[[DataFrame], Series]`，无法表达带参因子；55 注册条目 = 32 唯一因子 + 23 别名。
+- 24 个已实现因子未注册：volatility_gtja（5）、mean_reversion（4）、trend（3）、vwap（2）、volume_price（4，其中 3 个带 window 参数）、volatility（1，带 window）、cointegration（5，配对专用签名）。
+- 13 个策略文件直接 import 因子函数绕过注册表；同一因子（如 calc_rsi / calc_volume_ratio）在多个策略中重复计算，无任何存储/缓存。
+
+### 变更
+- **注册表契约扩展**（registry.py）：条目升级为 `FactorSpec`（func/tags/kind/params）；`kind` 支持 "single" / "pair"；默认参数从函数签名自动提取（`window` 等），`run_factor(name, df, **params)` 支持 kwargs 覆盖；`get_factor` 仍返回原始函数（向后兼容）；`list_factors(tag, kind)` 支持类型过滤；`calc_factors` 支持按因子名透传参数（`params={"calc_hv": {"window": 60}}`，落实 data-schemas 的"参数无关设计"）。
+- **新增缓存设施**（cache.py）：磁盘 parquet 缓存，路径 `data/factors/{因子名}/{参数哈希}_{数据指纹}.parquet`；缓存键 = (因子名, 参数哈希, 数据指纹)，调参/数据变化不串缓存，指纹与行顺序无关；原子写；`clear_factor_cache` 清理；`FACTOR_CACHE_DIR` 环境变量覆盖默认目录（测试经 conftest 隔离到 tmp）。
+- **注册 24 个因子**：19 个 single（volatility_gtja 5 / mean_reversion 4 / trend 3 / vwap 2 / volume_price 4 / volatility 1）+ 14 个 GTJA 编号别名（gtja_21/63/78/79/89/97/100/112/116/120/124/128/161/175）+ 5 个 pair。注册表口径 = 实际可用因子集：93 条目（51 single primary + 5 pair + 37 别名）。
+- **策略层 13 个文件改走注册表**（唯一因子入口）：无参因子 `run_factor(name, df)`、带参因子透传 window、pair_trading 经 `get_factor` 取函数、`_FACTOR_COMPUTERS` / `FACTOR_COMPUTE` 映射改为注册名；`rg` 确认无残留 factors direct import（仅 registry / neutralize）。
+- 决策（用户拍板）：cointegration 进注册表但按 pair 类型管理（按名可发现，不参与 run_factor）；缓存用磁盘 parquet（跨进程/跨回测复用）。
+
+### 测试
+- 新增/更新 `tests/factors/test_registry.py`（41 tests）：FactorSpec 契约、参数自动提取、run_factor 透传与 pair 拒绝、calc_factors 参数透传、kind 过滤、**全口径守卫**（注册集 == 实现集 93 条目，防新增因子漏注册）、新增 19 因子冒烟。
+- 新增 `tests/factors/test_factor_cache.py`（7 tests）：命中不重算、参数区分、数据区分、结果对齐、禁用重算、清理、NaN 往返。
+- 新增 `tests/conftest.py` / `tests_pipeline/conftest.py`：autouse 将 `FACTOR_CACHE_DIR` 隔离到 tmp，避免测试污染 `data/factors/`。
+- 单元 913 + 管道 26 = 939 tests 通过；`ruff check` 本次新增文件零错误（存量 24 个 lint 错误均为预存在，未触碰）；`ruff format --check` 通过。
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-06 | cointegration 5 个配对因子进注册表但用 kind="pair" 管理 | 用户拍板；按名可发现、口径完整，但签名不兼容 run_factor，由调用方按配对接口直接调用 |
+| 2026-06 | 缓存用磁盘 parquet（data/factors/） | 用户拍板；跨进程/跨回测复用，符合项目 parquet 存储习惯与分块约束 |
+| 2026-06 | 新增 GTJA 编号因子一并注册编号别名（gtja_21 等 14 个） | 与 momentum / volume_price_gtja 既有别名模式一致，按编号统一发现 |
+| 2026-06 | `get_factor` 保持返回原始函数 | 兼容红线：策略与既有测试依赖"返回可调用对象"，契约扩展不破坏现状 |
+| 2026-06 | `run_factor` 返回 Series 统一 name=因子名 | 缓存命中路径（列名 value）与计算路径（继承输入列名）的 name 不一致，统一后两次调用完全相等 |
+
+### 已知环境问题
+- 系统 python3（pandas 3.0）下 `tests/factors/test_neutralize.py::test_demean_with_real_like_data` 失败（datetime64 us vs ns 断言），为 pandas 3.0 行为变更所致，与本 Phase 无关；项目真实环境 `.venv`（pandas 2.3.3）下全量通过。

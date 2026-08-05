@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.volume_price import calc_obv, calc_volume_ratio
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -72,13 +72,18 @@ def momentum_trend_signal(
     df = df.sort_values(["code", "date"]).reset_index(drop=True)
 
     # 成交量比率
-    vol_ratio = calc_volume_ratio(df, window=vol_window).values
+    vol_ratio = run_factor("calc_volume_ratio", df, window=vol_window).values
 
     # OBV 趋势
-    obv = calc_obv(df)
-    obv_ma = obv.groupby(df["code"]).rolling(
-        window=obv_window, min_periods=1
-    ).mean().droplevel(0).sort_index().values
+    obv = run_factor("calc_obv", df)
+    obv_ma = (
+        obv.groupby(df["code"])
+        .rolling(window=obv_window, min_periods=1)
+        .mean()
+        .droplevel(0)
+        .sort_index()
+        .values
+    )
     obv_rising = pd.Series(obv_ma, index=df.index) > obv
 
     # 趋势判断：价格 vs MA
@@ -104,9 +109,11 @@ def momentum_trend_signal(
     signal[insufficient] = 0
     confidence[insufficient] = 0.0
 
-    return pd.DataFrame({
-        "date": df["date"],
-        "code": df["code"],
-        "signal": signal,
-        "confidence": confidence,
-    })
+    return pd.DataFrame(
+        {
+            "date": df["date"],
+            "code": df["code"],
+            "signal": signal,
+            "confidence": confidence,
+        }
+    )

@@ -14,8 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.factors.volume_price import calc_rsi, calc_volume_ratio
-from src.factors.volatility import calc_hv
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -125,27 +124,29 @@ def multifactor_signal(
     )
 
     # RSI：归一化到 0-1（RSI/100）
-    rsi_raw = calc_rsi(df, window=rsi_window)
+    rsi_raw = run_factor("calc_rsi", df, window=rsi_window)
     rsi_score = (100 - rsi_raw) / 100  # 反转因子：RSI 越低得分越高
 
     # 波动率：取反（低波动 = 高得分）
-    hv_raw = calc_hv(df, window=hv_window)
+    hv_raw = run_factor("calc_hv", df, window=hv_window)
     hv_score = -hv_raw  # 取反后排名时低波动得高分
 
     # 成交量比率
-    vol_raw = calc_volume_ratio(df, window=vol_window)
+    vol_raw = run_factor("calc_volume_ratio", df, window=vol_window)
     vol_score = vol_raw
 
     # 组合成因子 DataFrame
-    factors_df = pd.DataFrame({
-        "date": df["date"],
-        "code": df["code"],
-        "close": df["close"],
-        "momentum": momentum,
-        "rsi": rsi_score,
-        "volatility": hv_score,
-        "volume": vol_score,
-    })
+    factors_df = pd.DataFrame(
+        {
+            "date": df["date"],
+            "code": df["code"],
+            "close": df["close"],
+            "momentum": momentum,
+            "rsi": rsi_score,
+            "volatility": hv_score,
+            "volume": vol_score,
+        }
+    )
 
     # 初始化信号
     signal = pd.Series(0, index=df.index, dtype=int)
@@ -168,7 +169,9 @@ def multifactor_signal(
             continue
 
         # 截面排名归一化
-        factor_names = [f for f in ["momentum", "rsi", "volatility", "volume"] if f in weights]
+        factor_names = [
+            f for f in ["momentum", "rsi", "volatility", "volume"] if f in weights
+        ]
         day_data["score"] = 0.0
         total_weight = 0.0
         for f in factor_names:
@@ -184,7 +187,9 @@ def multifactor_signal(
 
         # 选出 top_n 和 bottom_n
         buy_codes = set(day_data.head(top_n)["code"].tolist()) if top_n > 0 else set()
-        sell_codes = set(day_data.tail(bottom_n)["code"].tolist()) if bottom_n > 0 else set()
+        sell_codes = (
+            set(day_data.tail(bottom_n)["code"].tolist()) if bottom_n > 0 else set()
+        )
 
         # 生成信号：在再平衡日及之后直到下一个再平衡日
         rb_idx = all_dates.index(rb_date)
@@ -199,7 +204,9 @@ def multifactor_signal(
                 if len(idx) > 0:
                     signal.iloc[idx] = 1
                     score_val = day_data[day_data["code"] == code]["score"].values
-                    confidence.iloc[idx] = float(score_val[0]) if len(score_val) > 0 else 0.5
+                    confidence.iloc[idx] = (
+                        float(score_val[0]) if len(score_val) > 0 else 0.5
+                    )
 
             for code in sell_codes - buy_codes:
                 mask = h_mask & (df["code"] == code)
@@ -220,14 +227,18 @@ def multifactor_signal(
         prev_holdings = buy_codes
 
     # 窗口不足的行置零
-    first_valid_date = all_dates[min_window] if min_window < len(all_dates) else all_dates[-1]
+    first_valid_date = (
+        all_dates[min_window] if min_window < len(all_dates) else all_dates[-1]
+    )
     early_mask = df["date"] < first_valid_date
     signal[early_mask] = 0
     confidence[early_mask] = 0.0
 
-    return pd.DataFrame({
-        "date": df["date"],
-        "code": df["code"],
-        "signal": signal,
-        "confidence": confidence,
-    })
+    return pd.DataFrame(
+        {
+            "date": df["date"],
+            "code": df["code"],
+            "signal": signal,
+            "confidence": confidence,
+        }
+    )

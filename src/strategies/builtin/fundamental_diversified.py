@@ -17,9 +17,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.earnings import calc_earnings_surprise
-from src.factors.liquidity import calc_amihud
-from src.factors.quality import calc_roe_stability
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -31,11 +29,11 @@ DEFAULT_WEIGHTS = {
 
 FACTOR_COLS = list(DEFAULT_WEIGHTS.keys())
 
-# Map factor column name → (calc_function, required_columns)
+# Map factor column name → (factor registry name, required_columns)
 FACTOR_COMPUTE = {
-    "earnings_surprise": (calc_earnings_surprise, ["earnings_surprise"]),
-    "amihud": (calc_amihud, ["volume", "close"]),
-    "roe_stability": (calc_roe_stability, ["roe_stability"]),
+    "earnings_surprise": ("calc_earnings_surprise", ["earnings_surprise"]),
+    "amihud": ("calc_amihud", ["volume", "close"]),
+    "roe_stability": ("calc_roe_stability", ["roe_stability"]),
 }
 
 
@@ -96,9 +94,9 @@ def fundamental_diversified_signal(
         if factors is not None and col in factors.columns:
             factor_data[col] = factors[col].values
         else:
-            calc_fn, req_cols = FACTOR_COMPUTE[col]
+            calc_name, req_cols = FACTOR_COMPUTE[col]
             if all(c in df.columns for c in req_cols):
-                factor_data[col] = calc_fn(df).values
+                factor_data[col] = run_factor(calc_name, df).values
             # else: skip this factor (missing data)
 
     if not factor_data:

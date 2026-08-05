@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.trend import calc_ma_slope_20d, calc_macd_like
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -63,8 +63,8 @@ def gtja_trend_signal(
     if factors is not None and all(c in factors.columns for c in FACTOR_COLS):
         factor_df = factors[["date", "code"] + FACTOR_COLS].copy()
     else:
-        slope = calc_ma_slope_20d(df)
-        macd = calc_macd_like(df)
+        slope = run_factor("calc_ma_slope_20d", df)
+        macd = run_factor("calc_macd_like", df)
         factor_df = pd.DataFrame(
             {
                 "date": df["date"],

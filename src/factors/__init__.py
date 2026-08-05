@@ -1,3 +1,4 @@
+from src.factors.cache import clear_factor_cache
 from src.factors.cointegration import (
     calc_coint_pvalue,
     calc_half_life,
@@ -21,16 +22,20 @@ from src.factors.quality import (
     calc_roe_stability,
 )
 from src.factors.registry import (
+    FactorSpec,
     calc_factors,
     get_factor,
+    get_spec,
     list_factors,
     register_factor,
+    run_factor,
 )
 from src.factors.value import calc_bp, calc_ep
 from src.factors.volatility import calc_hv
 from src.factors.volume_price import calc_atr, calc_obv, calc_rsi, calc_volume_ratio
 
 __all__ = [
+    "FactorSpec",
     "calc_amihud",
     "calc_atr",
     "calc_bp",
@@ -55,10 +60,13 @@ __all__ = [
     "calc_spread_zscore",
     "calc_turnover",
     "calc_volume_ratio",
+    "clear_factor_cache",
     "demean_by_industry",
     "get_factor",
+    "get_spec",
     "kalman_filter_hedge_ratio",
     "list_factors",
     "neutralize_factors",
     "register_factor",
+    "run_factor",
 ]

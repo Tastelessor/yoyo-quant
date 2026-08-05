@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.factors.cointegration import kalman_filter_hedge_ratio
+from src.factors.registry import get_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -136,7 +136,7 @@ def pair_trading_signal(
 
         # 预计算 Kalman beta（整个序列一次估计）
         if beta_method == "kalman":
-            all_betas = kalman_filter_hedge_ratio(log_a, log_b)
+            all_betas = get_factor("kalman_filter_hedge_ratio")(log_a, log_b)
 
         # 滚动计算 z-score
         zscores = np.full(len(common_dates), np.nan)

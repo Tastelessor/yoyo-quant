@@ -7,12 +7,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.mean_reversion import (
-    calc_directional_balance_12d,
-    calc_mfi_14d,
-    calc_rsi_6d,
-    calc_rsi_12d,
-)
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -76,10 +71,10 @@ def gtja_mean_reversion_signal(
     if factors is not None and all(c in factors.columns for c in FACTOR_COLS):
         factor_df = factors[["date", "code"] + FACTOR_COLS].copy()
     else:
-        rsi6 = calc_rsi_6d(df)
-        rsi12 = calc_rsi_12d(df)
-        db12 = calc_directional_balance_12d(df)
-        mfi14 = calc_mfi_14d(df)
+        rsi6 = run_factor("calc_rsi_6d", df)
+        rsi12 = run_factor("calc_rsi_12d", df)
+        db12 = run_factor("calc_directional_balance_12d", df)
+        mfi14 = run_factor("calc_mfi_14d", df)
         factor_df = pd.DataFrame(
             {
                 "date": df["date"],

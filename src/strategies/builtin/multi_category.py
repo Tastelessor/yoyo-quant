@@ -51,7 +51,9 @@ class MultiCategoryStrategy(Strategy):
         )
 
     def generate_signal(
-        self, data: pd.DataFrame, factors: pd.DataFrame | None = None,
+        self,
+        data: pd.DataFrame,
+        factors: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         """Generate combined signals from all category strategies."""
         return self._combiner.combine(data, factors=factors)

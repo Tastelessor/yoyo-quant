@@ -4,11 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.volatility_gtja import (
-    calc_atr_12d,
-    calc_cci_12d,
-    calc_volume_vol_20d,
-)
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -67,9 +63,9 @@ def gtja_volatility_signal(
     if factors is not None and all(c in factors.columns for c in FACTOR_COLS):
         factor_df = factors[["date", "code"] + FACTOR_COLS].copy()
     else:
-        cci = calc_cci_12d(df)
-        vv = calc_volume_vol_20d(df)
-        atr = calc_atr_12d(df)
+        cci = run_factor("calc_cci_12d", df)
+        vv = run_factor("calc_volume_vol_20d", df)
+        atr = run_factor("calc_atr_12d", df)
         factor_df = pd.DataFrame(
             {
                 "date": df["date"],

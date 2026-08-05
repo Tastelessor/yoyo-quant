@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.vwap import calc_vwap_close_ratio, calc_vwap_deviation
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -63,8 +63,8 @@ def gtja_vwap_signal(
     if factors is not None and all(c in factors.columns for c in FACTOR_COLS):
         factor_df = factors[["date", "code"] + FACTOR_COLS].copy()
     else:
-        vr = calc_vwap_close_ratio(df)
-        vd = calc_vwap_deviation(df)
+        vr = run_factor("calc_vwap_close_ratio", df)
+        vd = run_factor("calc_vwap_deviation", df)
         factor_df = pd.DataFrame(
             {
                 "date": df["date"],

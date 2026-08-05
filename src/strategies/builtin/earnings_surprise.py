@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.earnings import calc_earnings_acceleration, calc_earnings_surprise
+from src.factors.registry import run_factor
 from src.strategies.base import Strategy
 from src.strategies.registry import register_strategy
 
@@ -63,8 +63,8 @@ def gtja_earnings_surprise_signal(
     if factors is not None and all(c in factors.columns for c in FACTOR_COLS):
         factor_df = factors[["date", "code"] + FACTOR_COLS].copy()
     else:
-        es = calc_earnings_surprise(df)
-        ea = calc_earnings_acceleration(df)
+        es = run_factor("calc_earnings_surprise", df)
+        ea = run_factor("calc_earnings_acceleration", df)
         factor_df = pd.DataFrame(
             {
                 "date": df["date"],
