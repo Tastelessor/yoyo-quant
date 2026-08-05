@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.factors.operators import corr, delay, rolling_mean, rolling_std
+from factors.operators import delay, rolling_mean, rolling_std
 
 
 def _prepare(df: pd.DataFrame) -> pd.DataFrame:

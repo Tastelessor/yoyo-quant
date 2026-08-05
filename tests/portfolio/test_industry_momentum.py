@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.portfolio.industry_momentum import (
+from portfolio.industry_momentum import (
     apply_industry_tilt,
     compute_industry_momentum,
 )

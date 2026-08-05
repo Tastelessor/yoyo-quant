@@ -6,12 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.strategies.builtin.fundamental_diversified import (
+from strategies.builtin.fundamental_diversified import (
     DEFAULT_WEIGHTS,
     FundamentalDiversifiedStrategy,
     fundamental_diversified_signal,
 )
-from src.strategies.registry import get_strategy
+from strategies.registry import get_strategy
 
 # ---------------------------------------------------------------------------
 # Fixtures

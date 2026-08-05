@@ -6,13 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.factors.mean_reversion import (
+from factors.mean_reversion import (
     calc_directional_balance_12d,
     calc_mfi_14d,
-    calc_rsi_12d,
     calc_rsi_6d,
+    calc_rsi_12d,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

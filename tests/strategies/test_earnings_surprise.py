@@ -6,11 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.strategies.builtin.earnings_surprise import (
+from strategies.builtin.earnings_surprise import (
     GTJAEarningsSurpriseStrategy,
     gtja_earnings_surprise_signal,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

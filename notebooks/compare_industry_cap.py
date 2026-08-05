@@ -19,17 +19,16 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.backtest.walk_forward import walk_forward_backtest
-from src.config.loader import load_config
-from src.data import validate_ohlcv
-from src.data.fetcher import fetch_all_stocks, fetch_daily_batch
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data.universe import resolve_universe
-from src.portfolio.industry_momentum import (
-    apply_industry_tilt,
+from backtest.walk_forward import walk_forward_backtest
+from config.loader import load_config
+from data import validate_ohlcv
+from data.fetcher import fetch_all_stocks, fetch_daily_batch
+from data.filters import detect_limit_price, detect_suspension
+from data.universe import resolve_universe
+from portfolio.industry_momentum import (
     compute_industry_momentum,
 )
-from src.strategies.registry import get_strategy
+from strategies.registry import get_strategy
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_ROOT / "data" / "raw"

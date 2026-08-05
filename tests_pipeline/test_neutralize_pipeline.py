@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.strategies.builtin.gtja_momentum import GTJAMomentumStrategy
+from strategies.builtin.gtja_momentum import GTJAMomentumStrategy
 
 
 def _make_market_data(n_stocks: int = 10, n_days: int = 60) -> pd.DataFrame:
@@ -218,7 +218,7 @@ class TestStrategyWithNeutralization:
 class TestConfigIntegration:
     def test_config_builds_industry_map_enabled(self):
         """build_industry_map returns (dict, int) when enabled."""
-        from src.config.loader import build_industry_map
+        from config.loader import build_industry_map
 
         cfg = {
             "neutralization": {"enabled": True, "method": "demean", "min_peers": 5},
@@ -235,7 +235,7 @@ class TestConfigIntegration:
                 "industry": ["银行", "银行", "软件"],
             }
         )
-        with patch("src.data.fetcher.fetch_all_stocks", return_value=mock_df):
+        with patch("data.fetcher.fetch_all_stocks", return_value=mock_df):
             result = build_industry_map(cfg)
 
         assert result is not None
@@ -246,7 +246,7 @@ class TestConfigIntegration:
 
     def test_config_builds_industry_map_disabled(self):
         """build_industry_map returns None when disabled."""
-        from src.config.loader import build_industry_map
+        from config.loader import build_industry_map
 
         cfg = {"strategies": {"rules": []}, "risk": {"rules": []}}
         result = build_industry_map(cfg)
@@ -255,7 +255,7 @@ class TestConfigIntegration:
     def test_config_injects_to_strategy(self):
         """build_strategies injects industry_map into GTJA strategy constructors."""
 
-        from src.config.loader import build_strategies
+        from config.loader import build_strategies
 
         cfg = {
             "rules": [{"name": "gtja_momentum", "params": {"rebalance": 10}}],
@@ -269,7 +269,7 @@ class TestConfigIntegration:
 
     def test_config_no_inject_when_disabled(self):
         """Without industry_map_cfg, strategy gets no neutralization params."""
-        from src.config.loader import build_strategies
+        from config.loader import build_strategies
 
         cfg = {
             "rules": [{"name": "gtja_momentum", "params": {"rebalance": 10}}],
@@ -280,7 +280,7 @@ class TestConfigIntegration:
 
     def test_combined_strategy_injects_into_regime_switch(self):
         """build_combined_strategy passes neutralization to regime_switch."""
-        from src.config.loader import build_combined_strategy
+        from config.loader import build_combined_strategy
 
         cfg = {
             "neutralization": {"enabled": True, "min_peers": 3},
@@ -318,12 +318,12 @@ class TestConfigIntegration:
                 "industry": ["银行", "银行", "软件", "软件"],
             }
         )
-        with patch("src.data.fetcher.fetch_all_stocks", return_value=mock_df):
+        with patch("data.fetcher.fetch_all_stocks", return_value=mock_df):
             result = build_combined_strategy(cfg)
 
         rs = result["strategy"]
         # RegimeSwitchStrategy has .regimes dict
-        from src.context.regime_switch import RegimeSwitchStrategy
+        from context.regime_switch import RegimeSwitchStrategy
 
         assert isinstance(rs, RegimeSwitchStrategy)
         # Each regime's strategy should have industry_map injected

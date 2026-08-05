@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.continuous import continuous_backtest, compute_continuous_metrics
+from backtest.continuous import compute_continuous_metrics, continuous_backtest
 
 
 def _make_stock_data(start="2023-01-01", end="2025-12-31", codes=None):

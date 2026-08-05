@@ -39,13 +39,13 @@ def resolve_universe(
     source = cfg.get("source")
 
     if source == "index":
-        from src.data.fetcher import fetch_index_constituents
+        from data.fetcher import fetch_index_constituents
 
         index_code = cfg.get("index_code", "000905.SH")
         fetch_date = cfg.get("fetch_date")
         codes = fetch_index_constituents(index_code, date=fetch_date)
     elif source == "all":
-        from src.data.fetcher import fetch_all_stocks, fetch_fundamentals
+        from data.fetcher import fetch_all_stocks, fetch_fundamentals
 
         fetch_date = cfg.get("fetch_date")
         stocks_df = fetch_all_stocks(date=fetch_date)

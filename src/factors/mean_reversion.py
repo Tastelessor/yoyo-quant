@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.factors.operators import delay, sma
+from factors.operators import delay, sma
 
 
 def _prepare(df: pd.DataFrame) -> pd.DataFrame:

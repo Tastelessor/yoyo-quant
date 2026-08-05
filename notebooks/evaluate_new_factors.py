@@ -11,22 +11,21 @@ import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.backtest.walk_forward import compute_overall_metrics, walk_forward_backtest
-from src.data.earnings import build_earnings_panel, fetch_earnings_history
-from src.data.fetcher import (
+from backtest.walk_forward import walk_forward_backtest
+from data.earnings import build_earnings_panel, fetch_earnings_history
+from data.fetcher import (
     fetch_daily_batch,
     fetch_fundamentals,
     fetch_index_constituents,
 )
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data.fundamentals_quarterly import build_quality_panel, fetch_fina_batch
-from src.data.trade_calendar import fetch_trade_dates
-from src.strategies.registry import get_strategy
+from data.filters import detect_limit_price, detect_suspension
+from data.fundamentals_quarterly import build_quality_panel, fetch_fina_batch
+from data.trade_calendar import fetch_trade_dates
+from strategies.registry import get_strategy
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
@@ -83,9 +82,8 @@ def build_data_panel(codes, start, end, raw_dir):
 def make_single_factor_signal_fn(factor_col, rebalance=15, top_n=10, bottom_n=5):
     """Strategy that uses a single factor for scoring."""
     def signal_fn(train_data, test_data):
-        from src.strategies.builtin.earnings_surprise import (
+        from strategies.builtin.earnings_surprise import (
             _rank_normalize,
-            gtja_earnings_surprise_signal,
         )
 
         # Use the earnings surprise signal function pattern but with a single factor

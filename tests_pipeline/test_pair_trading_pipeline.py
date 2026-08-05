@@ -3,11 +3,11 @@
 import numpy as np
 import pandas as pd
 
-from src.backtest.engine import BacktestEngine
-from src.portfolio.allocator import equal_weight
-from src.risk.position_limit import apply_position_limit
-from src.risk.tradability import enforce_t1, filter_tradable
-from src.strategies.builtin.pair_trading import pair_trading_signal
+from backtest.engine import BacktestEngine
+from portfolio.allocator import equal_weight
+from risk.position_limit import apply_position_limit
+from risk.tradability import enforce_t1, filter_tradable
+from strategies.builtin.pair_trading import pair_trading_signal
 
 
 def _make_pair_ohlcv(n=120, seed=42):
@@ -111,7 +111,7 @@ def test_pair_trading_full_pipeline():
 
 def test_pair_trading_param_sweep_compatible():
     """pair_trading_signal 兼容 param_sweep 的 signal_gen 签名。"""
-    from src.analysis.param_sweep import build_grid, run_sweep
+    from analysis.param_sweep import build_grid, run_sweep
 
     ohlcv = _make_pair_ohlcv()
     market = _make_market_data(ohlcv)

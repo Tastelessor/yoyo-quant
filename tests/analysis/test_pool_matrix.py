@@ -2,8 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.analysis.pool_matrix import best_per_pool, pivot_matrix, run_matrix
-
+from analysis.pool_matrix import best_per_pool, pivot_matrix, run_matrix
 
 # --- fixtures ---
 

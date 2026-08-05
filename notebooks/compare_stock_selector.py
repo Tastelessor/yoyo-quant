@@ -18,14 +18,14 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.backtest.walk_forward import walk_forward_backtest
-from src.config.loader import build_stock_selector, load_config
-from src.data import validate_ohlcv
-from src.data.fetcher import fetch_daily_batch
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data.universe import resolve_universe
-from src.factors.registry import calc_factors
-from src.strategies.registry import get_strategy
+from backtest.walk_forward import walk_forward_backtest
+from config.loader import build_stock_selector, load_config
+from data import validate_ohlcv
+from data.fetcher import fetch_daily_batch
+from data.filters import detect_limit_price, detect_suspension
+from data.universe import resolve_universe
+from factors.registry import calc_factors
+from strategies.registry import get_strategy
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_ROOT / "data" / "raw"

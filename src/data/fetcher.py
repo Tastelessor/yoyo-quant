@@ -221,7 +221,7 @@ def fetch_daily_batch(
     DataFrame
         所有股票拼接后的 OHLCV 数据。
     """
-    from src.data.storage import save_parquet
+    from data.storage import save_parquet
 
     raw_dir = Path(raw_dir)
     frames: list[pd.DataFrame] = []

@@ -12,20 +12,19 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.backtest.engine import BacktestEngine
-from src.config.loader import load_config
-from src.data import validate_ohlcv
-from src.data.fetcher import fetch_all_stocks, fetch_daily_batch
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data.universe import resolve_universe
-from src.portfolio.allocator import equal_weight
-from src.risk.position_limit import apply_position_limit
-from src.risk.tradability import enforce_t1, filter_tradable
-from src.strategies.registry import get_strategy
+from backtest.engine import BacktestEngine
+from config.loader import load_config
+from data import validate_ohlcv
+from data.fetcher import fetch_all_stocks, fetch_daily_batch
+from data.filters import detect_limit_price, detect_suspension
+from data.universe import resolve_universe
+from portfolio.allocator import equal_weight
+from risk.position_limit import apply_position_limit
+from risk.tradability import enforce_t1, filter_tradable
+from strategies.registry import get_strategy
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_ROOT / "data" / "raw"

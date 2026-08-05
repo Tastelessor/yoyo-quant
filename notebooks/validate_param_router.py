@@ -16,19 +16,17 @@ import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.backtest.walk_forward import walk_forward_backtest
-from src.context.param_router import DEFAULT_REGIME_PARAMS, route_params
-from src.context.regime import detect_regime
-from src.context.regime_switch import RegimeSwitchStrategy
-from src.data.fetcher import fetch_daily
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data.storage import load_parquet, save_parquet
-from src.strategies.registry import get_strategy
+from backtest.walk_forward import walk_forward_backtest
+from context.param_router import DEFAULT_REGIME_PARAMS
+from context.regime_switch import RegimeSwitchStrategy
+from data.fetcher import fetch_daily
+from data.filters import detect_limit_price, detect_suspension
+from data.storage import load_parquet, save_parquet
+from strategies.registry import get_strategy
 
 PROJECT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT / "data" / "raw"
@@ -120,7 +118,7 @@ WF_PARAMS = {
     "max_weight": MAX_WEIGHT,
 }
 
-print(f"\n[2/3] Walk-forward: FIXED params (rebalance=20, top_n=5)...", flush=True)
+print("\n[2/3] Walk-forward: FIXED params (rebalance=20, top_n=5)...", flush=True)
 t0 = time.time()
 fixed_wf = walk_forward_backtest(
     data, make_signal_fn(fixed_rs), **WF_PARAMS,
@@ -130,7 +128,7 @@ fixed_ov = fixed_wf["overall"]
 n_periods = len(fixed_pp)
 print(f"  {n_periods} periods ({time.time() - t0:.0f}s)")
 
-print(f"\n[3/3] Walk-forward: ROUTED params (per-regime)...", flush=True)
+print("\n[3/3] Walk-forward: ROUTED params (per-regime)...", flush=True)
 t0 = time.time()
 routed_wf = walk_forward_backtest(
     data, make_signal_fn(routed_rs), **WF_PARAMS,

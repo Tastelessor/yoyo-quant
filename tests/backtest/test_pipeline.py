@@ -12,11 +12,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.engine import BacktestEngine, TradingCost
-from src.backtest.pipeline import build_positions, run_backtest, run_pipeline
-from src.portfolio.allocator import equal_weight
-from src.risk.position_limit import apply_position_limit
-from src.risk.tradability import enforce_t1, filter_tradable
+from backtest.engine import BacktestEngine, TradingCost
+from backtest.pipeline import build_positions, run_backtest, run_pipeline
+from portfolio.allocator import equal_weight
+from risk.position_limit import apply_position_limit
+from risk.tradability import enforce_t1, filter_tradable
 
 
 def _make_stock_data(codes=None, days=10, seed=42, limit_up_codes=None):

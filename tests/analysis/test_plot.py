@@ -1,10 +1,11 @@
 import matplotlib
+
 matplotlib.use("Agg")
 
 import pandas as pd
 import pytest
 
-from src.analysis.plot import plot_sweep_heatmap, plot_sweep_metrics
+from analysis.plot import plot_sweep_heatmap, plot_sweep_metrics
 
 
 @pytest.fixture

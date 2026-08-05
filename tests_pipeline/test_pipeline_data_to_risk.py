@@ -7,10 +7,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.data.filters import detect_limit_price, detect_suspension
-from src.factors.volatility import calc_hv
-from src.risk.tradability import enforce_t1, filter_tradable
-from src.strategies.builtin.mean_reversion import mean_reversion_signal
+from data.filters import detect_limit_price, detect_suspension
+from factors.volatility import calc_hv
+from risk.tradability import enforce_t1, filter_tradable
+from strategies.builtin.mean_reversion import mean_reversion_signal
 
 
 @pytest.fixture

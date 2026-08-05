@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.strategies.base import Strategy
+    from strategies.base import Strategy
 
 _REGISTRY: dict[str, type[Strategy]] = {}
 

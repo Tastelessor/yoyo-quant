@@ -13,24 +13,24 @@ from __future__ import annotations
 import json
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data.fetcher import fetch_daily
-from src.data.storage import load_parquet, save_parquet
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data import validate_ohlcv
-from src.context.stock_selector import evaluate_factors
-from src.strategies.builtin.volume_price_gtja import GTJAVolumePriceStrategy
-from src.risk.tradability import enforce_t1, filter_tradable
-from src.portfolio.allocator import equal_weight
-from src.risk.position_limit import apply_position_limit
-from src.backtest.engine import BacktestEngine
+from backtest.engine import BacktestEngine
+from context.stock_selector import evaluate_factors
+from data import validate_ohlcv
+from data.fetcher import fetch_daily
+from data.filters import detect_limit_price, detect_suspension
+from data.storage import load_parquet, save_parquet
+from portfolio.allocator import equal_weight
+from risk.position_limit import apply_position_limit
+from risk.tradability import enforce_t1, filter_tradable
+from strategies.builtin.volume_price_gtja import GTJAVolumePriceStrategy
 
 PROJECT = Path(__file__).resolve().parent.parent
 AUDIT_DIR = PROJECT / "data" / "audit"
@@ -54,9 +54,12 @@ def collect_all_factors():
     """Collect ALL factor functions from all factor modules."""
     factors = {}
 
-    from src.factors.momentum import (
-        calc_momentum_5d_change, calc_momentum_5d_ratio,
-        calc_momentum_6d_return, calc_momentum_20d_change, calc_momentum_20d_return,
+    from factors.momentum import (
+        calc_momentum_5d_change,
+        calc_momentum_5d_ratio,
+        calc_momentum_6d_return,
+        calc_momentum_20d_change,
+        calc_momentum_20d_return,
     )
     factors['momentum_5d_change'] = (calc_momentum_5d_change, 'momentum')
     factors['momentum_5d_ratio'] = (calc_momentum_5d_ratio, 'momentum')
@@ -64,26 +67,32 @@ def collect_all_factors():
     factors['momentum_20d_change'] = (calc_momentum_20d_change, 'momentum')
     factors['momentum_20d_return'] = (calc_momentum_20d_return, 'momentum')
 
-    from src.factors.mean_reversion import (
-        calc_rsi_6d, calc_rsi_12d, calc_directional_balance_12d, calc_mfi_14d,
+    from factors.mean_reversion import (
+        calc_directional_balance_12d,
+        calc_mfi_14d,
+        calc_rsi_6d,
+        calc_rsi_12d,
     )
     factors['rsi_6d'] = (calc_rsi_6d, 'mean_reversion')
     factors['rsi_12d'] = (calc_rsi_12d, 'mean_reversion')
     factors['directional_balance_12d'] = (calc_directional_balance_12d, 'mean_reversion')
     factors['mfi_14d'] = (calc_mfi_14d, 'mean_reversion')
 
-    from src.factors.volume_price import calc_rsi, calc_obv, calc_volume_ratio, calc_atr
+    from factors.volume_price import calc_atr, calc_obv, calc_rsi, calc_volume_ratio
     factors['rsi_14d'] = (lambda df: calc_rsi(df, window=14), 'volume_price')
     factors['obv'] = (calc_obv, 'volume_price')
     factors['volume_ratio_20d'] = (lambda df: calc_volume_ratio(df, window=20), 'volume_price')
     factors['atr_14d_basic'] = (lambda df: calc_atr(df, window=14), 'volume_price')
 
-    from src.factors.volatility import calc_hv
+    from factors.volatility import calc_hv
     factors['hv_20d'] = (calc_hv, 'volatility')
 
-    from src.factors.volatility_gtja import (
-        calc_cci_12d, calc_volume_vol_10d, calc_volume_vol_20d,
-        calc_atr_12d, calc_atr_6d,
+    from factors.volatility_gtja import (
+        calc_atr_6d,
+        calc_atr_12d,
+        calc_cci_12d,
+        calc_volume_vol_10d,
+        calc_volume_vol_20d,
     )
     factors['cci_12d'] = (calc_cci_12d, 'volatility')
     factors['volume_vol_10d'] = (calc_volume_vol_10d, 'volatility')
@@ -91,24 +100,34 @@ def collect_all_factors():
     factors['atr_12d'] = (calc_atr_12d, 'volatility')
     factors['atr_6d'] = (calc_atr_6d, 'volatility')
 
-    from src.factors.vwap import calc_vwap_close_ratio, calc_vwap_deviation
+    from factors.vwap import calc_vwap_close_ratio, calc_vwap_deviation
     factors['vwap_close_ratio'] = (calc_vwap_close_ratio, 'vwap')
     factors['vwap_deviation'] = (calc_vwap_deviation, 'vwap')
 
-    from src.factors.trend import calc_ma_slope_6d, calc_ma_slope_20d, calc_macd_like
+    from factors.trend import calc_ma_slope_6d, calc_ma_slope_20d, calc_macd_like
     factors['ma_slope_6d'] = (calc_ma_slope_6d, 'trend')
     factors['ma_slope_20d'] = (calc_ma_slope_20d, 'trend')
     factors['macd_like'] = (calc_macd_like, 'trend')
 
-    from src.factors.volume_price_gtja import (
-        calc_money_flow_6d, calc_up_down_vol_ratio_26d, calc_obv_6d,
-        calc_vol_rank_intraday_corr_6d, calc_vol_change_pct_5d,
-        calc_return_6d_times_vol, calc_return_1d_times_vol,
-        calc_high_vol_rank_corr_3d, calc_close_vol_rank_cov_5d,
-        calc_open_vol_corr_10d, calc_vwap_vol_rank_corr_5d,
-        calc_williams_r_smoothed_6d, calc_shadow_ratio_20d,
-        calc_candle_body_vol_composite, calc_open_vwap_close_vwap,
-        calc_dollar_vol_std_6d, calc_vol_macd_9_26_12, calc_vol_rsi_6d,
+    from factors.volume_price_gtja import (
+        calc_candle_body_vol_composite,
+        calc_close_vol_rank_cov_5d,
+        calc_dollar_vol_std_6d,
+        calc_high_vol_rank_corr_3d,
+        calc_money_flow_6d,
+        calc_obv_6d,
+        calc_open_vol_corr_10d,
+        calc_open_vwap_close_vwap,
+        calc_return_1d_times_vol,
+        calc_return_6d_times_vol,
+        calc_shadow_ratio_20d,
+        calc_up_down_vol_ratio_26d,
+        calc_vol_change_pct_5d,
+        calc_vol_macd_9_26_12,
+        calc_vol_rank_intraday_corr_6d,
+        calc_vol_rsi_6d,
+        calc_vwap_vol_rank_corr_5d,
+        calc_williams_r_smoothed_6d,
     )
     gtja = {
         'money_flow_6d': calc_money_flow_6d,
@@ -163,7 +182,7 @@ prices = data[["date", "code", "close"]]
 print(f"{data['code'].nunique()} stocks, {data['date'].nunique()} days ({time.time() - t0:.1f}s)")
 
 # ── Compute factors ─────────────────────────────────────────────────────
-print(f"\n[2/5] Computing factors + detecting regime...", flush=True)
+print("\n[2/5] Computing factors + detecting regime...", flush=True)
 t0 = time.time()
 all_factors = collect_all_factors()
 fdf = pd.DataFrame({"date": data["date"], "code": data["code"]})
@@ -181,7 +200,7 @@ factor_cols = [c for c in fdf.columns if c.startswith("f_")]
 name_map = {f"f_{k}": k for k in all_factors}
 
 # ── Detect regime ───────────────────────────────────────────────────────────
-from src.context.regime import detect_regime
+from context.regime import detect_regime
 
 print("  Detecting market regime...", end=" ", flush=True)
 t0 = time.time()
@@ -223,7 +242,7 @@ audit = audit[["name", "category", "coverage", "stability", "dispersion", "activ
 print(f"  {audit['active'].sum()}/{len(audit)} active ({time.time() - t0:.1f}s)")
 
 # ── Save to standardized format ─────────────────────────────────────────
-today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+today = datetime.now(UTC).strftime("%Y-%m-%d")
 audit_path = AUDIT_DIR / f"{today}_factor_audit.parquet"
 meta_path = AUDIT_DIR / f"{today}_audit_meta.json"
 latest_path = AUDIT_DIR / "latest_factor_audit.parquet"
@@ -253,6 +272,7 @@ with open(meta_path, "w") as f:
 
 # Copy to latest
 import shutil
+
 shutil.copy(audit_path, latest_path)
 
 print(f"\n  Saved: {audit_path}")
@@ -307,7 +327,7 @@ print(f"\n{'─' * 70}")
 print(f"[4/5] Per-regime audit ({len(factor_cols)} factors × {len(regime_counts)} regimes)")
 print(f"{'─' * 70}")
 
-from src.context.stock_selector import evaluate_factors_by_regime
+from context.stock_selector import evaluate_factors_by_regime
 
 REGIME_AUDIT_DIR = AUDIT_DIR / "by_regime"
 REGIME_AUDIT_DIR.mkdir(parents=True, exist_ok=True)

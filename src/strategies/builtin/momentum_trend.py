@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.registry import run_factor
-from src.strategies.base import Strategy
-from src.strategies.registry import register_strategy
+from factors.registry import run_factor
+from strategies.base import Strategy
+from strategies.registry import register_strategy
 
 
 @register_strategy("momentum_trend")

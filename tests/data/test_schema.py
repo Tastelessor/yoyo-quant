@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.data import OHLCV_SCHEMA, validate_ohlcv
+from data import OHLCV_SCHEMA, validate_ohlcv
 
 
 def test_ohlcv_schema():

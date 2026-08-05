@@ -11,8 +11,8 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-from src.backtest.engine import TradingCost
-from src.backtest.pipeline import build_positions, run_backtest, run_pipeline
+from backtest.engine import TradingCost
+from backtest.pipeline import build_positions, run_backtest, run_pipeline
 
 
 def generate_windows(
@@ -619,12 +619,12 @@ def walk_forward_multi_silo(
 
         # Apply industry cap on merged portfolio
         if industry_map is not None:
-            from src.portfolio.industry_cap import apply_industry_cap
+            from portfolio.industry_cap import apply_industry_cap
 
             positions = apply_industry_cap(positions, industry_map, max_industry_weight)
 
         # Apply position limit on merged portfolio
-        from src.risk.position_limit import apply_position_limit
+        from risk.position_limit import apply_position_limit
 
         positions = apply_position_limit(positions, max_weight=max_weight)
 

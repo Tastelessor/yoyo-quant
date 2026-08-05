@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,16 +24,16 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.backtest.engine import TradingCost
-from src.backtest.walk_forward import walk_forward_backtest
-from src.backtest.continuous import continuous_backtest
-from src.config.loader import build_industry_map, load_config
-from src.data import validate_ohlcv
-from src.data.earnings import build_earnings_panel, fetch_earnings_history
-from src.data.fetcher import fetch_daily_batch, fetch_index_constituents
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data.trade_calendar import fetch_trade_dates
-from src.strategies.registry import get_strategy
+from backtest.continuous import continuous_backtest
+from backtest.engine import TradingCost
+from backtest.walk_forward import walk_forward_backtest
+from config.loader import build_industry_map, load_config
+from data import validate_ohlcv
+from data.earnings import build_earnings_panel, fetch_earnings_history
+from data.fetcher import fetch_daily_batch, fetch_index_constituents
+from data.filters import detect_limit_price, detect_suspension
+from data.trade_calendar import fetch_trade_dates
+from strategies.registry import get_strategy
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
@@ -149,7 +150,7 @@ print(f"  IR (mean/std):    {wf_ir:.3f}")
 print(f"  Periods:          {len(pp)}")
 print(f"  Elapsed:          {wf_elapsed:.1f}s")
 
-print(f"\n  Per-period Sharpe breakdown:")
+print("\n  Per-period Sharpe breakdown:")
 print(f"  {'Period':<25} {'Sharpe':>8} {'MaxDD':>8} {'MktRet':>8} {'Trades':>7} {'CostR':>7}")
 print(f"  {'-'*64}")
 for _, row in pp.iterrows():
@@ -212,11 +213,11 @@ print(f"  Gap (WF - Continuous): {gap:+.1%}")
 print(f"  Elapsed: {cont_elapsed:.1f}s")
 
 if gap < -0.30:
-    print(f"  ⚠ WF underperforms continuous by >30% — capital chaining drag or regime shift")
+    print("  ⚠ WF underperforms continuous by >30% — capital chaining drag or regime shift")
 elif gap > 0.50:
-    print(f"  ⚠ WF outperforms continuous by >50% — possible look-ahead bias in signal_fn")
+    print("  ⚠ WF outperforms continuous by >50% — possible look-ahead bias in signal_fn")
 else:
-    print(f"  ✓ Gap within [-30%, +50%] — acceptable")
+    print("  ✓ Gap within [-30%, +50%] — acceptable")
 
 # ═══════════════════════════════════════════════════════════════════════
 # Diagnostic 3: Cost Sensitivity
@@ -271,11 +272,11 @@ else:
 
 print(f"\n  Sharpe Elasticity (baseline→extreme): {elasticity:.2f}")
 if elasticity < 1.0:
-    print(f"  ✓ Elasticity < 1.0 — strategy is cost-robust")
+    print("  ✓ Elasticity < 1.0 — strategy is cost-robust")
 elif elasticity < 2.0:
-    print(f"  ~ Elasticity 1.0~2.0 — moderate cost sensitivity")
+    print("  ~ Elasticity 1.0~2.0 — moderate cost sensitivity")
 else:
-    print(f"  ⚠ Elasticity > 2.0 — strategy highly dependent on low-cost environment")
+    print("  ⚠ Elasticity > 2.0 — strategy highly dependent on low-cost environment")
 
 # ═══════════════════════════════════════════════════════════════════════
 # Diagnostic 4: Time Stability
@@ -314,9 +315,9 @@ print(f"  Second half ({second_half['test_start'].iloc[0].strftime('%Y-%m')} ~ "
 print(f"  Trend slope: {slope:+.4f} per period")
 
 if slope < -0.05:
-    print(f"  ⚠ Slope < -0.05 — factor may be decaying")
+    print("  ⚠ Slope < -0.05 — factor may be decaying")
 else:
-    print(f"  ✓ Slope > -0.05 — no significant decay")
+    print("  ✓ Slope > -0.05 — no significant decay")
 
 # ── Per-period Sharpe time series chart ────────────────────────────────
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -350,7 +351,7 @@ ax.grid(axis="y", alpha=0.3)
 
 fig.tight_layout()
 fig.savefig(OUTPUT_DIR / "per_period_sharpe_timeseries.png", dpi=150)
-print(f"\n  Chart saved: output/per_period_sharpe_timeseries.png")
+print("\n  Chart saved: output/per_period_sharpe_timeseries.png")
 
 # ═══════════════════════════════════════════════════════════════════════
 # Decision Table

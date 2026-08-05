@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 ts = pytest.importorskip("tushare", reason="tushare 未安装，跳过集成测试")
-from src.data.fetcher import fetch_daily  # noqa: E402
+from data.fetcher import fetch_daily  # noqa: E402
 
 EXPECTED_COLUMNS = ["date", "code", "open", "high", "low", "close", "volume"]
 

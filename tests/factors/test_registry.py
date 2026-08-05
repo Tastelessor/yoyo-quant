@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.factors.registry import (
+from factors.registry import (
     FACTOR_REGISTRY,
     calc_factors,
     get_factor,
@@ -181,7 +181,7 @@ def _make_df(
 
 def _ensure_defaults() -> None:
     """重建默认注册表（防御：其他测试可能 clear 过 FACTOR_REGISTRY）。"""
-    from src.factors.registry import _register_defaults
+    from factors.registry import _register_defaults
 
     FACTOR_REGISTRY.clear()
     _register_defaults()

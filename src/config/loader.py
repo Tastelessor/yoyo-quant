@@ -7,11 +7,11 @@ from pathlib import Path
 
 import yaml
 
-from src.risk.rule_engine import RuleEngine
-from src.risk.rule_registry import get_risk_rule
-from src.strategies.base import Strategy
-from src.strategies.combiner import FilterCombiner, WeightedVoteCombiner
-from src.strategies.registry import get_strategy
+from risk.rule_engine import RuleEngine
+from risk.rule_registry import get_risk_rule
+from strategies.base import Strategy
+from strategies.combiner import FilterCombiner, WeightedVoteCombiner
+from strategies.registry import get_strategy
 
 
 def load_config(path: Path) -> dict:
@@ -42,7 +42,7 @@ def build_industry_map(
     neu_cfg = cfg.get("neutralization")
     if not neu_cfg or not neu_cfg.get("enabled", False):
         return None
-    from src.data.fetcher import fetch_all_stocks
+    from data.fetcher import fetch_all_stocks
 
     stocks_df = fetch_all_stocks()
     industry_map = dict(zip(stocks_df["code"], stocks_df["industry"]))
@@ -58,7 +58,7 @@ def _inject_neutralization(
     """Inject industry_map and min_peers into strategy params if supported."""
     if industry_map_cfg is None:
         return
-    from src.strategies.registry import _REGISTRY
+    from strategies.registry import _REGISTRY
 
     im_dict, min_peers = industry_map_cfg
     strat_cls = _REGISTRY.get(strategy_name)
@@ -143,7 +143,7 @@ def build_backtest_config(cfg: dict) -> dict:
     if "atr_stop_loss" in bt_cfg:
         result["atr_stop_loss"] = bt_cfg["atr_stop_loss"]
     if "trading_cost" in bt_cfg:
-        from src.backtest.engine import TradingCost
+        from backtest.engine import TradingCost
 
         result["trading_cost"] = TradingCost(**bt_cfg["trading_cost"])
     return result
@@ -203,7 +203,7 @@ def build_stock_selector(cfg: dict):
         "min_pass_count": ss_cfg.get("min_pass_count", 1),
     }
 
-    from src.context.stock_selector import select_tradable
+    from context.stock_selector import select_tradable
 
     def selector(factor_df):
         return select_tradable(factor_df, factor_names, **params)
@@ -250,7 +250,7 @@ def build_regime_switch(
     if rs_cfg is None:
         return None
 
-    from src.context.regime_switch import RegimeSwitchStrategy
+    from context.regime_switch import RegimeSwitchStrategy
 
     regimes = {}
     for regime_label, strat_cfg in rs_cfg["regimes"].items():
@@ -291,7 +291,7 @@ def build_combined_strategy(cfg: dict) -> dict:
     dict
         ``{"regime": MarketRegime | None, "strategy": Strategy | Combiner}``
     """
-    from src.strategies.builtin.market_regime import MarketRegime
+    from strategies.builtin.market_regime import MarketRegime
 
     industry_map_cfg = build_industry_map(cfg)
 

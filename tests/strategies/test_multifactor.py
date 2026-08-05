@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
-import pytest
 
-from src.strategies.builtin.multifactor import multifactor_signal
+from strategies.builtin.multifactor import multifactor_signal
 
 
 def _make_multi_stock_data(n_days=60, n_stocks=5):

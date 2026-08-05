@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from src.data.universe import (
+from data.universe import (
     apply_data_filters,
     apply_fundamental_filters,
     resolve_universe,
@@ -230,7 +230,7 @@ def test_resolve_universe_from_index_source():
         "fetch_date": "2026-05-23",
     }
     with patch(
-        "src.data.fetcher.fetch_index_constituents", return_value=["000001", "600519"]
+        "data.fetcher.fetch_index_constituents", return_value=["000001", "600519"]
     ):
         result = resolve_universe(cfg)
     assert result == ["000001", "600519"]
@@ -245,7 +245,7 @@ def test_resolve_universe_index_source_with_st_filter():
         "filters": {"exclude_st": True},
     }
     with patch(
-        "src.data.fetcher.fetch_index_constituents", return_value=["000001", "000858"]
+        "data.fetcher.fetch_index_constituents", return_value=["000001", "000858"]
     ):
         result = resolve_universe(cfg, st_codes=["000858"])
     assert result == ["000001"]
@@ -258,7 +258,7 @@ def test_resolve_universe_index_source_passes_params():
         "index_code": "000905.SH",
         "fetch_date": "2026-05-23",
     }
-    with patch("src.data.fetcher.fetch_index_constituents", return_value=[]) as mock:
+    with patch("data.fetcher.fetch_index_constituents", return_value=[]) as mock:
         resolve_universe(cfg)
     mock.assert_called_once_with("000905.SH", date="2026-05-23")
 
@@ -278,7 +278,7 @@ def test_resolve_universe_index_source_deduplicates():
         "fetch_date": "2026-05-23",
     }
     with patch(
-        "src.data.fetcher.fetch_index_constituents",
+        "data.fetcher.fetch_index_constituents",
         return_value=["000001", "000001", "600519"],
     ):
         result = resolve_universe(cfg)
@@ -365,8 +365,8 @@ def test_resolve_universe_all_source():
         }
     )
     with (
-        patch("src.data.fetcher.fetch_all_stocks", return_value=stocks_df),
-        patch("src.data.fetcher.fetch_fundamentals", return_value=fund_df),
+        patch("data.fetcher.fetch_all_stocks", return_value=stocks_df),
+        patch("data.fetcher.fetch_fundamentals", return_value=fund_df),
     ):
         result = resolve_universe(cfg)
     assert "000001" in result

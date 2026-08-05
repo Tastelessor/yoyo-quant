@@ -1,9 +1,9 @@
 """Context layer: regime detection, strategy routing, stock selection, parameter routing."""
 
-from src.context.param_router import route_params
-from src.context.regime import detect_regime
-from src.context.regime_switch import RegimeSwitchStrategy
-from src.context.stock_selector import (
+from context.param_router import route_params
+from context.regime import detect_regime
+from context.regime_switch import RegimeSwitchStrategy
+from context.stock_selector import (
     evaluate_factors,
     evaluate_factors_by_regime,
     factor_coverage,

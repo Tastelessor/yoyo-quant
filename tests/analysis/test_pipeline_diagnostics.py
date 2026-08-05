@@ -6,11 +6,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.analysis.pipeline_diagnostics import (
+from analysis.pipeline_diagnostics import (
     forward_return_analysis,
     full_diagnosis,
-    signal_stage_counts,
     signal_spread,
+    signal_stage_counts,
 )
 
 

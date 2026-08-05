@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.risk.position_limit import PositionLimitRule, apply_position_limit
-from src.risk.rules import RuleContext
+from risk.position_limit import PositionLimitRule, apply_position_limit
+from risk.rules import RuleContext
 
 
 @pytest.fixture

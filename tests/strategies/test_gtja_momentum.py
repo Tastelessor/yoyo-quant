@@ -6,11 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.strategies.builtin.gtja_momentum import (
+from strategies.builtin.gtja_momentum import (
     GTJAMomentumStrategy,
     gtja_momentum_signal,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.registry import run_factor
-from src.strategies.base import Strategy
-from src.strategies.registry import register_strategy
+from factors.registry import run_factor
+from strategies.base import Strategy
+from strategies.registry import register_strategy
 
 _FACTOR_COMPUTERS = {
     "money_flow_6d": "calc_money_flow_6d",
@@ -114,7 +114,7 @@ def gtja_volume_price_signal(
                 factor_df[col] = run_factor(_FACTOR_COMPUTERS[col], df).values
 
     if industry_map is not None:
-        from src.factors.neutralize import neutralize_factors
+        from factors.neutralize import neutralize_factors
 
         factor_df = neutralize_factors(
             factor_df, industry_map, active, min_peers=min_peers

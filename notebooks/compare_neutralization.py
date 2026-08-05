@@ -17,13 +17,13 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.backtest.walk_forward import walk_forward_backtest
-from src.config.loader import load_config
-from src.data import validate_ohlcv
-from src.data.fetcher import fetch_all_stocks, fetch_daily_batch
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data.universe import resolve_universe
-from src.strategies.registry import get_strategy
+from backtest.walk_forward import walk_forward_backtest
+from config.loader import load_config
+from data import validate_ohlcv
+from data.fetcher import fetch_all_stocks, fetch_daily_batch
+from data.filters import detect_limit_price, detect_suspension
+from data.universe import resolve_universe
+from strategies.registry import get_strategy
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
@@ -130,13 +130,13 @@ for strat_name, params in strategies:
     print(f"\n  {strat_name}:", flush=True)
 
     # Baseline
-    print(f"    Baseline...", end=" ", flush=True)
+    print("    Baseline...", end=" ", flush=True)
     fn_raw = make_signal_fn(strat_name, **params)
     r_raw = run_experiment(data, fn_raw, f"{strat_name} (raw)")
     print(f"Sharpe={r_raw.get('sharpe_ratio', 0):.3f}", flush=True)
 
     # With neutralization
-    print(f"    Neutralized...", end=" ", flush=True)
+    print("    Neutralized...", end=" ", flush=True)
     fn_neut = make_signal_fn(strat_name, industry_map=industry_map,
                              min_peers=3, **params)
     r_neut = run_experiment(data, fn_neut, f"{strat_name} (neutral)")

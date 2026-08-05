@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.strategies.builtin.mean_reversion import mean_reversion_signal
+from strategies.builtin.mean_reversion import mean_reversion_signal
 
 
 @pytest.fixture

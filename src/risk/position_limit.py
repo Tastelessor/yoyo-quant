@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.risk.rules import Rule, RuleContext
+from risk.rules import Rule, RuleContext
 
 
 class PositionLimitRule(Rule):

@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.factors.cache import clear_factor_cache
-from src.factors.registry import FACTOR_REGISTRY, register_factor, run_factor
+from factors.cache import clear_factor_cache
+from factors.registry import FACTOR_REGISTRY, register_factor, run_factor
 
 
 def _make_df(n_days: int = 10, codes: list[str] | None = None) -> pd.DataFrame:

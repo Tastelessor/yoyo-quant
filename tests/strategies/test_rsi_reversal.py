@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.strategies.builtin.rsi_reversal import RSIReversalStrategy
+from strategies.builtin.rsi_reversal import RSIReversalStrategy
 
 
 @pytest.fixture

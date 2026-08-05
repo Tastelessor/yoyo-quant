@@ -7,10 +7,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src.backtest.engine import BacktestEngine
-from src.portfolio.allocator import equal_weight
-from src.risk.position_limit import apply_position_limit
-from src.visualization.charts import plot_backtest_summary
+from backtest.engine import BacktestEngine
+from portfolio.allocator import equal_weight
+from risk.position_limit import apply_position_limit
+from visualization.charts import plot_backtest_summary
 
 
 def _make_prices():

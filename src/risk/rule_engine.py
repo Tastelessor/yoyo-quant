@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.risk.rules import Rule, RuleContext
+from risk.rules import Rule, RuleContext
 
 
 class RuleEngine:

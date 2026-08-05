@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.registry import run_factor
-from src.strategies.base import Strategy
-from src.strategies.registry import register_strategy
+from factors.registry import run_factor
+from strategies.base import Strategy
+from strategies.registry import register_strategy
 
 DEFAULT_WEIGHTS = {
     "earnings_surprise": 1.0,
@@ -107,7 +107,7 @@ def fundamental_diversified_signal(
     factor_df = pd.DataFrame({"date": df["date"], "code": df["code"], **factor_data})
 
     if industry_map is not None:
-        from src.factors.neutralize import neutralize_factors
+        from factors.neutralize import neutralize_factors
 
         factor_df = neutralize_factors(
             factor_df, industry_map, list(factor_data.keys()), min_peers=min_peers

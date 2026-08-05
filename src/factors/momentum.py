@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.operators import delay
+from factors.operators import delay
 
 
 def _prepare(df: pd.DataFrame) -> pd.DataFrame:

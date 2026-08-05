@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
-import pytest
 
 
 class TestBuildQualityPanel:
@@ -48,7 +46,7 @@ class TestBuildQualityPanel:
         )
 
     def test_returns_dataframe(self):
-        from src.data.fundamentals_quarterly import build_quality_panel
+        from data.fundamentals_quarterly import build_quality_panel
 
         fina_df = self._make_fina_df()
         trade_dates = pd.date_range("2025-01-01", "2025-12-31", freq="B")
@@ -57,7 +55,7 @@ class TestBuildQualityPanel:
         assert isinstance(result, pd.DataFrame)
 
     def test_has_required_columns(self):
-        from src.data.fundamentals_quarterly import build_quality_panel
+        from data.fundamentals_quarterly import build_quality_panel
 
         fina_df = self._make_fina_df()
         trade_dates = pd.date_range("2025-01-01", "2025-12-31", freq="B")
@@ -71,7 +69,7 @@ class TestBuildQualityPanel:
 
     def test_pit_alignment_no_lookahead(self):
         """Q4 2024 announced 2025-03-30 should NOT be visible on 2025-03-28."""
-        from src.data.fundamentals_quarterly import build_quality_panel
+        from data.fundamentals_quarterly import build_quality_panel
 
         fina_df = self._make_fina_df()
         trade_dates = pd.date_range("2025-03-27", "2025-04-02", freq="B")
@@ -95,7 +93,7 @@ class TestBuildQualityPanel:
 
     def test_roe_stability_nan_for_insufficient_quarters(self):
         """ROE stability needs >= 2 quarters; single quarter → NaN."""
-        from src.data.fundamentals_quarterly import build_quality_panel
+        from data.fundamentals_quarterly import build_quality_panel
 
         # Only 1 quarter of data
         fina_df = pd.DataFrame(
@@ -114,7 +112,7 @@ class TestBuildQualityPanel:
         assert result["roe_stability"].isna().all()
 
     def test_empty_input_returns_zero_filled(self):
-        from src.data.fundamentals_quarterly import build_quality_panel
+        from data.fundamentals_quarterly import build_quality_panel
 
         fina_df = pd.DataFrame(columns=["code", "ann_date", "end_date", "roe", "ocfps"])
         trade_dates = pd.date_range("2025-01-01", "2025-01-05", freq="B")
@@ -125,7 +123,7 @@ class TestBuildQualityPanel:
 
     def test_two_stocks_independent(self):
         """Each stock's ROE should be computed independently."""
-        from src.data.fundamentals_quarterly import build_quality_panel
+        from data.fundamentals_quarterly import build_quality_panel
 
         fina_df = self._make_fina_df()
         trade_dates = pd.date_range("2025-05-01", "2025-05-05", freq="B")
@@ -143,7 +141,7 @@ class TestFetchFinaIndicator:
     """Tests for fetch_fina_indicator (mocked API)."""
 
     def test_returns_dataframe(self, monkeypatch):
-        from src.data.fundamentals_quarterly import fetch_fina_indicator
+        from data.fundamentals_quarterly import fetch_fina_indicator
 
         mock_data = pd.DataFrame(
             {

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
-from src.factors.operators import delay, rolling_mean, sma
+from factors.operators import delay, rolling_mean, sma
 
 
 def _prepare(df: pd.DataFrame) -> pd.DataFrame:

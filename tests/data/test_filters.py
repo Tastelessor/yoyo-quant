@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.data.filters import detect_limit_price, detect_suspension
+from data.filters import detect_limit_price, detect_suspension
 
 
 @pytest.fixture

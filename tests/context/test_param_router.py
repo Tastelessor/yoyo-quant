@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.context.param_router import DEFAULT_REGIME_PARAMS, route_params
+from context.param_router import DEFAULT_REGIME_PARAMS, route_params
 
 
 class TestRouteParams:

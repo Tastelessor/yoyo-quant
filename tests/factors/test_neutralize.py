@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.factors.neutralize import demean_by_industry, neutralize_factors
+from factors.neutralize import demean_by_industry, neutralize_factors
 
 # ---------------------------------------------------------------------------
 # Fixtures

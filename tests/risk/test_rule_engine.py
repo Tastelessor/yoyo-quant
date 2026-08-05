@@ -4,9 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.risk.rules import Rule, RuleContext
-from src.risk.rule_engine import RuleEngine
-
+from risk.rule_engine import RuleEngine
+from risk.rules import Rule, RuleContext
 
 # --- Fixtures ---
 

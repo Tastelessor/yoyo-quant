@@ -9,10 +9,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.analysis.pool_matrix import pivot_matrix, run_matrix
-from src.context.regime import detect_regime
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data.universe import resolve_universe
+from analysis.pool_matrix import pivot_matrix, run_matrix
+from context.regime import detect_regime
+from data.filters import detect_limit_price, detect_suspension
+from data.universe import resolve_universe
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def test_csi500_universe_resolves_from_mock_index():
         "fetch_date": "2026-05-23",
     }
     with patch(
-        "src.data.fetcher.fetch_index_constituents",
+        "data.fetcher.fetch_index_constituents",
         return_value=[f"{600000 + i:06d}" for i in range(20)],
     ):
         result = resolve_universe(cfg)

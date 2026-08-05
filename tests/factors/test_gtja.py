@@ -6,14 +6,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.factors.momentum import (
+from factors.momentum import (
     calc_momentum_5d_change,
     calc_momentum_5d_ratio,
     calc_momentum_6d_return,
     calc_momentum_20d_change,
     calc_momentum_20d_return,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

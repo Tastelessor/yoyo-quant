@@ -3,8 +3,8 @@
 import pandas as pd
 import pytest
 
-from src.strategies.base import Strategy
-from src.strategies.registry import get_strategy, list_strategies, register_strategy
+from strategies.base import Strategy
+from strategies.registry import get_strategy, list_strategies, register_strategy
 
 
 class TestRegistry:

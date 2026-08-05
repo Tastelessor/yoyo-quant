@@ -6,7 +6,6 @@ pd.Series aligned to the input index. NaN where insufficient data.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 

@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from src.data.trade_calendar import (
+from data.trade_calendar import (
     TRADE_CAL_SCHEMA,
     fetch_trade_calendar,
     fetch_trade_dates,
@@ -51,7 +51,7 @@ def fake_calendar():
 @pytest.fixture
 def mock_api(fake_calendar):
     """mock tushare pro_api trade_cal，按年分片返回 fake_calendar。"""
-    with patch("src.data.trade_calendar.ts") as mock_ts:
+    with patch("data.trade_calendar.ts") as mock_ts:
         mock_api = MagicMock()
         cal = fake_calendar.copy()
         cal["cal_date"] = pd.to_datetime(cal["cal_date"], format="%Y%m%d")
@@ -262,7 +262,7 @@ def test_is_trading_day_empty_calendar(mock_api, tmp_path):
 
 def test_trade_dates_drive_pit_panel_grid(mock_api, tmp_path):
     """用日历生成 trade_dates 时，节假日/周末不得出现在 PIT 面板网格。"""
-    from src.data.earnings import build_earnings_panel
+    from data.earnings import build_earnings_panel
 
     with _token_env():
         trade_dates = fetch_trade_dates("2025-01-01", "2025-02-05", cache_dir=tmp_path)

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.factors.operators import (
+from factors.operators import (
     corr,
     delay,
     delta,
@@ -19,7 +19,6 @@ from src.factors.operators import (
     ts_max,
     ts_min,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

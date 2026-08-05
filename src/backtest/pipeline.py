@@ -22,10 +22,10 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.backtest.engine import BacktestEngine, TradingCost
-from src.portfolio.allocator import equal_weight
-from src.risk.position_limit import apply_position_limit
-from src.risk.tradability import enforce_t1, filter_tradable
+from backtest.engine import BacktestEngine, TradingCost
+from portfolio.allocator import equal_weight
+from risk.position_limit import apply_position_limit
+from risk.tradability import enforce_t1, filter_tradable
 
 
 def build_positions(
@@ -58,7 +58,7 @@ def build_positions(
         Per-date exposure fraction (indexed by date).
     dead_zone : float
         Position smoothing dead-zone threshold. When > 0, applies
-        :func:`src.portfolio.smoother.smooth_positions` with
+        :func:`portfolio.smoother.smooth_positions` with
         ``prev_positions`` as the cold-start state.
     prev_positions : DataFrame | None
         Previous period's ending positions for smoother cold start.
@@ -92,7 +92,7 @@ def build_positions(
     positions = equal_weight(signals, prices, capital=capital, exposure=exposure)
 
     if dead_zone > 0:
-        from src.portfolio.smoother import smooth_positions
+        from portfolio.smoother import smooth_positions
 
         # Include previous period's last-day prices so the smoother can
         # forward-fill close for resurrected stocks.
@@ -243,7 +243,7 @@ def run_pipeline(
 
     # Industry cap + position limit (post-smoothing portfolio constraints)
     if industry_map is not None:
-        from src.portfolio.industry_cap import apply_industry_cap
+        from portfolio.industry_cap import apply_industry_cap
 
         positions = apply_industry_cap(positions, industry_map, max_industry_weight)
     positions = apply_position_limit(positions, max_weight=max_weight)

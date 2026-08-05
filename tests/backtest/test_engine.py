@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.engine import BacktestEngine, TradingCost
+from backtest.engine import BacktestEngine, TradingCost
 
 
 @pytest.fixture
@@ -873,7 +873,7 @@ class TestCircuitBreaker:
 
     def test_no_compression_when_no_drawdown(self):
         """Circuit breaker does nothing when equity rises."""
-        from src.portfolio.circuit_breaker import DrawdownCircuitBreaker
+        from portfolio.circuit_breaker import DrawdownCircuitBreaker
 
         cb = DrawdownCircuitBreaker(threshold=-0.10, recovery_threshold=-0.03)
         positions, prices = self._make_data([100, 101, 102, 103])
@@ -886,7 +886,7 @@ class TestCircuitBreaker:
 
     def test_compression_on_drawdown(self):
         """Circuit breaker reduces positions during drawdown."""
-        from src.portfolio.circuit_breaker import DrawdownCircuitBreaker
+        from portfolio.circuit_breaker import DrawdownCircuitBreaker
 
         cb = DrawdownCircuitBreaker(threshold=-0.10, recovery_threshold=-0.03)
         # Price drops 20% -> drawdown triggers CB
@@ -909,7 +909,7 @@ class TestCircuitBreaker:
 
     def test_cb_resets_each_run(self):
         """Circuit breaker resets at start of each engine.run()."""
-        from src.portfolio.circuit_breaker import DrawdownCircuitBreaker
+        from portfolio.circuit_breaker import DrawdownCircuitBreaker
 
         cb = DrawdownCircuitBreaker(threshold=-0.10, recovery_threshold=-0.03)
 

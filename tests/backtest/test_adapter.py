@@ -1,9 +1,8 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
-import pandas as pd
 
-from src.backtest.adapter import build_strategy_config, make_handle_bar, make_init
+from backtest.adapter import build_strategy_config, make_handle_bar, make_init
 
 
 def test_build_strategy_config_basic():

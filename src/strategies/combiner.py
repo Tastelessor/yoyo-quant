@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.strategies.base import Strategy
+from strategies.base import Strategy
 
 
 class WeightedVoteCombiner:

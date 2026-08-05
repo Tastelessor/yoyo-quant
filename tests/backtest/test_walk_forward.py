@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.walk_forward import (
+from backtest.walk_forward import (
     compute_overall_metrics,
     generate_windows,
     walk_forward_backtest,
@@ -354,7 +354,7 @@ class TestWalkForwardWithCircuitBreaker:
 
     def test_circuit_breaker_runs_without_error(self):
         """Circuit breaker should not crash the backtest."""
-        from src.portfolio.circuit_breaker import DrawdownCircuitBreaker
+        from portfolio.circuit_breaker import DrawdownCircuitBreaker
 
         data = _make_stock_data("2023-01-01", "2025-12-31")
         cb = DrawdownCircuitBreaker(threshold=-0.10, recovery_threshold=-0.03)
@@ -370,7 +370,7 @@ class TestWalkForwardWithCircuitBreaker:
 
     def test_circuit_breaker_resets_each_period(self):
         """Circuit breaker resets at start of each walk-forward period."""
-        from src.portfolio.circuit_breaker import DrawdownCircuitBreaker
+        from portfolio.circuit_breaker import DrawdownCircuitBreaker
 
         data = _make_stock_data("2023-01-01", "2025-12-31")
         cb = DrawdownCircuitBreaker(threshold=-0.10, recovery_threshold=-0.03)

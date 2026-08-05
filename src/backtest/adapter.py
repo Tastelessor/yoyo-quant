@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
-from src.strategies.builtin.mean_reversion import mean_reversion_signal
+from strategies.builtin.mean_reversion import mean_reversion_signal
 
 if TYPE_CHECKING:
     pass

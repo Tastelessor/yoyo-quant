@@ -1,9 +1,9 @@
 import pandas as pd
 import pytest
 
-from src.data.filters import detect_limit_price, detect_suspension
-from src.risk.rules import RuleContext
-from src.risk.tradability import T1Rule, TradabilityRule, enforce_t1, filter_tradable
+from data.filters import detect_limit_price, detect_suspension
+from risk.rules import RuleContext
+from risk.tradability import T1Rule, TradabilityRule, enforce_t1, filter_tradable
 
 
 @pytest.fixture

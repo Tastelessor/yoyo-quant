@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
-from src.portfolio.allocator import equal_weight
+from portfolio.allocator import equal_weight
 
 
 def _make_signals(dates, codes, capital=1_000_000):

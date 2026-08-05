@@ -4,9 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.strategies.base import Strategy
-from src.strategies.combiner import FilterCombiner, WeightedVoteCombiner
-
+from strategies.base import Strategy
+from strategies.combiner import FilterCombiner, WeightedVoteCombiner
 
 # --- Fixtures ---
 

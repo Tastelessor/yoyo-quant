@@ -12,43 +12,42 @@ import time
 import warnings
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.backtest.engine import BacktestEngine
-from src.context.regime import detect_regime
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data.storage import load_parquet
-from src.factors.mean_reversion import (
+from backtest.engine import BacktestEngine
+from context.regime import detect_regime
+from data.filters import detect_limit_price, detect_suspension
+from data.storage import load_parquet
+from factors.mean_reversion import (
     calc_directional_balance_12d,
     calc_mfi_14d,
     calc_rsi_12d,
 )
-from src.factors.momentum import (
+from factors.momentum import (
+    calc_momentum_5d_ratio,
     calc_momentum_20d_change,
     calc_momentum_20d_return,
-    calc_momentum_5d_ratio,
 )
-from src.factors.trend import calc_ma_slope_20d, calc_macd_like
-from src.factors.volatility_gtja import (
+from factors.trend import calc_ma_slope_20d, calc_macd_like
+from factors.volatility_gtja import (
     calc_atr_12d,
     calc_cci_12d,
     calc_volume_vol_20d,
 )
-from src.factors.volume_price_gtja import (
+from factors.volume_price_gtja import (
     calc_money_flow_6d,
     calc_obv_6d,
     calc_return_1d_times_vol,
     calc_shadow_ratio_20d,
     calc_up_down_vol_ratio_26d,
 )
-from src.factors.vwap import calc_vwap_close_ratio, calc_vwap_deviation
-from src.portfolio.allocator import equal_weight
-from src.risk.position_limit import apply_position_limit
-from src.risk.tradability import enforce_t1, filter_tradable
+from factors.vwap import calc_vwap_close_ratio, calc_vwap_deviation
+from portfolio.allocator import equal_weight
+from risk.position_limit import apply_position_limit
+from risk.tradability import enforce_t1, filter_tradable
 
 CODES = [
     "601939", "601398", "600036", "601318", "300059", "600030",
@@ -237,13 +236,13 @@ for rl in ["ALL", "trend_up", "trend_down", "range", "volatile"]:
         f"worst={worst['category']:<18} (Sharpe {worst['sharpe']:+.3f})"
     )
 
-print(f"\nSharpe by Regime × Category:")
+print("\nSharpe by Regime × Category:")
 pivot = df.pivot(index="category", columns="regime", values="sharpe")
 pivot = pivot[["ALL", "trend_up", "trend_down", "range", "volatile"]]
 print(pivot.to_string(float_format=lambda x: f"{x:+.3f}"))
 
 # Regime aversion score: std of Sharpe across regimes (lower = more regime-agnostic)
-print(f"\nRegime Sensitivity (std of per-regime Sharpe, lower = more agnostic):")
+print("\nRegime Sensitivity (std of per-regime Sharpe, lower = more agnostic):")
 regime_cols = ["trend_up", "trend_down", "range", "volatile"]
 sensitivity = pivot[regime_cols].std(axis=1).sort_values()
 for cat, val in sensitivity.items():

@@ -2,8 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.analysis.param_sweep import best_result, build_grid, run_sweep
-
+from analysis.param_sweep import best_result, build_grid, run_sweep
 
 # --- fixtures ---
 

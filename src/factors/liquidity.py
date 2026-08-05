@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.factors.operators import rolling_mean
+from factors.operators import rolling_mean
 
 
 def _prepare(df: pd.DataFrame) -> pd.DataFrame:

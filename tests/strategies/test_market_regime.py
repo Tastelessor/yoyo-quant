@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.strategies.builtin.market_regime import (
+from strategies.builtin.market_regime import (
     MarketRegime,
     market_regime_exposure,
 )

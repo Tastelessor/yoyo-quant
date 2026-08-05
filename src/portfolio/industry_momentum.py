@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.portfolio.industry_cap import apply_industry_cap
+from portfolio.industry_cap import apply_industry_cap
 
 
 def compute_industry_momentum(

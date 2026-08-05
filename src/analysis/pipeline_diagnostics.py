@@ -6,8 +6,8 @@ and where signal degradation occurs in the risk/portfolio pipeline.
 
 from __future__ import annotations
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 def signal_stage_counts(

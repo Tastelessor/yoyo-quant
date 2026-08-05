@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.portfolio.industry_cap import apply_industry_cap
+from portfolio.industry_cap import apply_industry_cap
 
 
 def _make_positions(date, codes, weights):

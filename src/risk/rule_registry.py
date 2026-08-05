@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.risk.rules import Rule
+from risk.rules import Rule
 
 _RISK_RULES: dict[str, type[Rule]] = {}
 
@@ -25,8 +25,8 @@ def list_risk_rules() -> list[str]:
 
 # Auto-register built-in rules
 def _register_defaults() -> None:
-    from src.risk.position_limit import PositionLimitRule
-    from src.risk.tradability import T1Rule, TradabilityRule
+    from risk.position_limit import PositionLimitRule
+    from risk.tradability import T1Rule, TradabilityRule
 
     register_risk_rule("position_limit", PositionLimitRule)
     register_risk_rule("tradability", TradabilityRule)

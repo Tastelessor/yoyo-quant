@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.strategies.builtin.momentum_breakout import MomentumBreakoutStrategy
+from strategies.builtin.momentum_breakout import MomentumBreakoutStrategy
 
 
 @pytest.fixture

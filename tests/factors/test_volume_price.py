@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.factors.volume_price import calc_atr, calc_obv, calc_rsi, calc_volume_ratio
+from factors.volume_price import calc_atr, calc_obv, calc_rsi, calc_volume_ratio
 
 
 @pytest.fixture

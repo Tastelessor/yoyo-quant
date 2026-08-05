@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
-from src.context.regime import detect_regime
-from src.context.regime_switch import RegimeSwitchStrategy
-from src.strategies.base import Strategy
-
+from context.regime import detect_regime
+from context.regime_switch import RegimeSwitchStrategy
+from strategies.base import Strategy
 
 # ---------------------------------------------------------------------------
 # Fixtures

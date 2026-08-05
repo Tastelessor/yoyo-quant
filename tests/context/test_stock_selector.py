@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.context.stock_selector import (
+from context.stock_selector import (
     evaluate_factors,
     evaluate_factors_by_regime,
     factor_coverage,
@@ -14,7 +14,6 @@ from src.context.stock_selector import (
     rank_stability,
     select_tradable,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

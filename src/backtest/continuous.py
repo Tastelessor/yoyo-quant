@@ -12,8 +12,8 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-from src.backtest.engine import TradingCost
-from src.backtest.pipeline import run_pipeline
+from backtest.engine import TradingCost
+from backtest.pipeline import run_pipeline
 
 
 def compute_continuous_metrics(equity_curve: pd.DataFrame, capital: float) -> dict:

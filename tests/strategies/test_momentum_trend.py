@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
-import pytest
 
-from src.strategies.builtin.momentum_trend import momentum_trend_signal
+from strategies.builtin.momentum_trend import momentum_trend_signal
 
 
 def _make_data(n=100, trend="up"):

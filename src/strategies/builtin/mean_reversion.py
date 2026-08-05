@@ -1,7 +1,7 @@
 import pandas as pd
 
-from src.strategies.base import Strategy
-from src.strategies.registry import register_strategy
+from strategies.base import Strategy
+from strategies.registry import register_strategy
 
 
 @register_strategy("mean_reversion")

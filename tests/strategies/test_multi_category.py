@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.strategies.builtin.multi_category import MultiCategoryStrategy
-from src.strategies.registry import get_strategy, list_strategies
+from strategies.builtin.multi_category import MultiCategoryStrategy
+from strategies.registry import get_strategy, list_strategies
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ def test_empty_categories_raises():
 
 def test_single_category(sample_data):
     """单类别组合应产生与原始策略相同数量的信号。"""
-    from src.strategies.registry import get_strategy as gs
+    from strategies.registry import get_strategy as gs
 
     original = gs("gtja_momentum", rebalance=20, top_n=3, bottom_n=0)
     multi = get_strategy(

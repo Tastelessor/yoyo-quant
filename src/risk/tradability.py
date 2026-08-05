@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.risk.rules import Rule, RuleContext
+from risk.rules import Rule, RuleContext
 
 
 class TradabilityRule(Rule):

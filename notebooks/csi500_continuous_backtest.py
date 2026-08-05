@@ -9,20 +9,19 @@ import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.backtest.continuous import continuous_backtest
-from src.backtest.walk_forward import walk_forward_backtest
-from src.config.loader import build_industry_map, load_config
-from src.data import validate_ohlcv
-from src.data.earnings import build_earnings_panel, fetch_earnings_history
-from src.data.fetcher import fetch_daily_batch, fetch_index_constituents
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data.trade_calendar import fetch_trade_dates
-from src.strategies.registry import get_strategy
+from backtest.continuous import continuous_backtest
+from backtest.walk_forward import walk_forward_backtest
+from config.loader import build_industry_map, load_config
+from data import validate_ohlcv
+from data.earnings import build_earnings_panel, fetch_earnings_history
+from data.fetcher import fetch_daily_batch, fetch_index_constituents
+from data.filters import detect_limit_price, detect_suspension
+from data.trade_calendar import fetch_trade_dates
+from strategies.registry import get_strategy
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
@@ -39,7 +38,7 @@ print("=" * 80)
 codes = fetch_index_constituents("000905.SH", date="2026-05-23")
 print(f"\n  {len(codes)} CSI 500 constituents")
 
-print(f"  Loading OHLCV...", flush=True)
+print("  Loading OHLCV...", flush=True)
 t0 = time.time()
 data = fetch_daily_batch(codes, START_DATE, END_DATE, RAW_DIR, sleep_sec=0, progress=False)
 data = detect_limit_price(data)

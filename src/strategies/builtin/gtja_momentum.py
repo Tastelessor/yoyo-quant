@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.registry import run_factor
-from src.strategies.base import Strategy
-from src.strategies.registry import register_strategy
+from factors.registry import run_factor
+from strategies.base import Strategy
+from strategies.registry import register_strategy
 
 DEFAULT_WEIGHTS = {
     "gtja_14": 1.0,
@@ -127,7 +127,7 @@ def gtja_momentum_signal(
 
     # Industry neutralization: strip industry exposure before ranking
     if industry_map is not None:
-        from src.factors.neutralize import neutralize_factors
+        from factors.neutralize import neutralize_factors
 
         factor_df = neutralize_factors(
             factor_df, industry_map, FACTOR_COLS, min_peers=min_peers

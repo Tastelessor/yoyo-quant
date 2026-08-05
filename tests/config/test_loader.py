@@ -3,12 +3,11 @@
 import tempfile
 from pathlib import Path
 
+import pandas as pd
 import pytest
 import yaml
 
-import pandas as pd
-
-from src.config.loader import (
+from config.loader import (
     build_backtest_config,
     build_regime_switch,
     build_risk_engine,
@@ -16,9 +15,9 @@ from src.config.loader import (
     build_strategies,
     load_config,
 )
-from src.risk.rule_engine import RuleEngine
-from src.strategies.base import Strategy
-from src.strategies.combiner import WeightedVoteCombiner
+from risk.rule_engine import RuleEngine
+from strategies.base import Strategy
+from strategies.combiner import WeightedVoteCombiner
 
 
 @pytest.fixture

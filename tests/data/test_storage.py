@@ -1,11 +1,10 @@
 import tempfile
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pytest
 
-from src.data.storage import load_parquet, save_parquet
+from data.storage import load_parquet, save_parquet
 
 
 @pytest.fixture

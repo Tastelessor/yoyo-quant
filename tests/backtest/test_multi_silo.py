@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.walk_forward import _merge_silo_positions, walk_forward_multi_silo
+from backtest.walk_forward import _merge_silo_positions, walk_forward_multi_silo
 
 
 class TestMergeSiloPositions:

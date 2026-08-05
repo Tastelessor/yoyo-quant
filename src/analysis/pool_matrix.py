@@ -11,8 +11,8 @@ import warnings
 
 import pandas as pd
 
-from src.backtest.pipeline import run_pipeline
-from src.strategies.registry import get_strategy
+from backtest.pipeline import run_pipeline
+from strategies.registry import get_strategy
 
 logger = logging.getLogger(__name__)
 

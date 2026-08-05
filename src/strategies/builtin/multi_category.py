@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.strategies.base import Strategy
-from src.strategies.combiner import WeightedVoteCombiner
-from src.strategies.registry import get_strategy, register_strategy
+from strategies.base import Strategy
+from strategies.combiner import WeightedVoteCombiner
+from strategies.registry import get_strategy, register_strategy
 
 
 @register_strategy("multi_category")

@@ -8,15 +8,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.data.earnings import (
-    FORECAST_TYPE_SCORE,
+from data.earnings import (
     build_earnings_panel,
-    fetch_earnings_history,
     fetch_express,
     fetch_forecast,
     get_prev_end_date,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -56,7 +53,7 @@ def fake_express_data():
 @pytest.fixture
 def mock_forecast_api(fake_forecast_data):
     """mock tushare forecast API。"""
-    with patch("src.data.earnings.ts") as mock_ts:
+    with patch("data.earnings.ts") as mock_ts:
         mock_api = MagicMock()
         mock_api.forecast.return_value = fake_forecast_data
         mock_ts.pro_api.return_value = mock_api
@@ -66,7 +63,7 @@ def mock_forecast_api(fake_forecast_data):
 @pytest.fixture
 def mock_express_api(fake_express_data):
     """mock tushare express API。"""
-    with patch("src.data.earnings.ts") as mock_ts:
+    with patch("data.earnings.ts") as mock_ts:
         mock_api = MagicMock()
         mock_api.express.return_value = fake_express_data
         mock_ts.pro_api.return_value = mock_api
@@ -97,7 +94,7 @@ class TestFetchForecast:
         assert row["predicted_profit"] == pytest.approx(125.0)
 
     def test_empty_response_returns_empty_df(self, tmp_path):
-        with patch("src.data.earnings.ts") as mock_ts, \
+        with patch("data.earnings.ts") as mock_ts, \
              patch.dict("os.environ", {"TUSHARE_TOKEN": "test"}):
             mock_api = MagicMock()
             mock_api.forecast.return_value = pd.DataFrame()
@@ -133,7 +130,7 @@ class TestFetchExpress:
         assert all(len(c) == 6 for c in df["code"])
 
     def test_empty_response_returns_empty_df(self, tmp_path):
-        with patch("src.data.earnings.ts") as mock_ts, \
+        with patch("data.earnings.ts") as mock_ts, \
              patch.dict("os.environ", {"TUSHARE_TOKEN": "test"}):
             mock_api = MagicMock()
             mock_api.express.return_value = pd.DataFrame()
@@ -174,7 +171,7 @@ class TestComputePitSurprise:
 
     def test_forecast_uses_type_score(self):
         """Forecast 事件应使用 FORECAST_TYPE_SCORE。"""
-        from src.data.earnings import _compute_pit_surprise
+        from data.earnings import _compute_pit_surprise
         events = self._make_events([
             {"code": "A", "ann_date": pd.Timestamp("2025-01-15"), "end_date": "20241231",
              "event_type": "forecast", "predicted_profit": 100.0, "actual_profit": np.nan,
@@ -185,7 +182,7 @@ class TestComputePitSurprise:
 
     def test_express_uses_same_pool_rank_diff(self):
         """Express 事件应使用同池 rank(actual) - rank(predicted)。"""
-        from src.data.earnings import _compute_pit_surprise
+        from data.earnings import _compute_pit_surprise
         events = self._make_events([
             {"code": "A", "ann_date": pd.Timestamp("2025-02-20"), "end_date": "20241231",
              "event_type": "express", "predicted_profit": 100.0, "actual_profit": 130.0,
@@ -206,7 +203,7 @@ class TestComputePitSurprise:
 
     def test_no_none_rank_crash(self):
         """Forecast 事件不应尝试 rank(None)。"""
-        from src.data.earnings import _compute_pit_surprise
+        from data.earnings import _compute_pit_surprise
         events = self._make_events([
             {"code": "A", "ann_date": pd.Timestamp("2025-02-20"), "end_date": "20241231",
              "event_type": "express", "predicted_profit": 100.0, "actual_profit": 130.0,
@@ -229,7 +226,7 @@ class TestComputePitSurprise:
 
     def test_pool_below_threshold_uses_type_score(self):
         """express_pool < 3 时退化为类型评分。"""
-        from src.data.earnings import _compute_pit_surprise
+        from data.earnings import _compute_pit_surprise
         events = self._make_events([
             {"code": "A", "ann_date": pd.Timestamp("2025-01-15"), "end_date": "20241231",
              "event_type": "forecast", "predicted_profit": 100.0, "actual_profit": np.nan,
@@ -250,7 +247,7 @@ class TestComputePitSurprise:
 class TestComputeAcceleration:
     def test_q1_links_to_prev_year_annual(self):
         """Q1 的 acceleration = Q1 surprise - 去年年报 surprise。"""
-        from src.data.earnings import _compute_acceleration
+        from data.earnings import _compute_acceleration
         df = pd.DataFrame([
             {"code": "A", "ann_date": pd.Timestamp("2025-04-20"), "end_date": "20241231",
              "raw_surprise": 0.2},
@@ -263,7 +260,7 @@ class TestComputeAcceleration:
 
     def test_missing_quarter_gives_zero(self):
         """缺季 → acceleration = 0.0。"""
-        from src.data.earnings import _compute_acceleration
+        from data.earnings import _compute_acceleration
         df = pd.DataFrame([
             {"code": "A", "ann_date": pd.Timestamp("2025-04-20"), "end_date": "20241231",
              "raw_surprise": 0.2},
@@ -277,7 +274,7 @@ class TestComputeAcceleration:
 
     def test_multi_quarter_sequence(self):
         """Q2→Q3→Q4 连续加速度正确。"""
-        from src.data.earnings import _compute_acceleration
+        from data.earnings import _compute_acceleration
         df = pd.DataFrame([
             {"code": "A", "ann_date": pd.Timestamp("2025-04-20"), "end_date": "20250331",
              "raw_surprise": 0.3},

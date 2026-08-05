@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.strategies.base import Strategy
-from src.strategies.builtin.pair_trading import PairTradingStrategy, pair_trading_signal
-from src.strategies.registry import get_strategy
+from strategies.base import Strategy
+from strategies.builtin.pair_trading import PairTradingStrategy, pair_trading_signal
+from strategies.registry import get_strategy
 
 
 def _make_pair_data(n=120, seed=42):

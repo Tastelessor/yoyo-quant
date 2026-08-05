@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.context.regime import detect_regime
-from src.strategies.base import Strategy
+from context.regime import detect_regime
+from strategies.base import Strategy
 
 
 class RegimeSwitchStrategy(Strategy):

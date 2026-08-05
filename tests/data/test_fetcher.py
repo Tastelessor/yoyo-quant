@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from src.data import OHLCV_SCHEMA
-from src.data.fetcher import (
+from data import OHLCV_SCHEMA
+from data.fetcher import (
     fetch_all_stocks,
     fetch_daily,
     fetch_daily_batch,
@@ -32,7 +32,7 @@ def fake_tushare_data():
 @pytest.fixture
 def mock_api(fake_tushare_data):
     """mock tushare pro_api。"""
-    with patch("src.data.fetcher.ts") as mock_ts:
+    with patch("data.fetcher.ts") as mock_ts:
         mock_api = MagicMock()
         mock_api.daily.return_value = fake_tushare_data
         mock_ts.pro_api.return_value = mock_api
@@ -128,7 +128,7 @@ def test_fetch_index_constituents_returns_list(tmp_path):
         }
     )
     with (
-        patch("src.data.fetcher.ts") as mock_ts,
+        patch("data.fetcher.ts") as mock_ts,
         patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
     ):
         mock_ts.pro_api.return_value = mock_api
@@ -147,7 +147,7 @@ def test_fetch_index_constituents_deduplicates(tmp_path):
         }
     )
     with (
-        patch("src.data.fetcher.ts") as mock_ts,
+        patch("data.fetcher.ts") as mock_ts,
         patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
     ):
         mock_ts.pro_api.return_value = mock_api
@@ -166,7 +166,7 @@ def test_fetch_index_constituents_strips_suffix(tmp_path):
         }
     )
     with (
-        patch("src.data.fetcher.ts") as mock_ts,
+        patch("data.fetcher.ts") as mock_ts,
         patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
     ):
         mock_ts.pro_api.return_value = mock_api
@@ -182,7 +182,7 @@ def test_fetch_index_constituents_empty_returns_empty(tmp_path):
     mock_api = MagicMock()
     mock_api.index_weight.return_value = pd.DataFrame()
     with (
-        patch("src.data.fetcher.ts") as mock_ts,
+        patch("data.fetcher.ts") as mock_ts,
         patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
     ):
         mock_ts.pro_api.return_value = mock_api
@@ -205,7 +205,7 @@ def test_fetch_index_constituents_uses_cache(tmp_path):
     pd.DataFrame({"code": ["000001", "600519"]}).to_parquet(cache_file, index=False)
 
     with (
-        patch("src.data.fetcher.ts") as mock_ts,
+        patch("data.fetcher.ts") as mock_ts,
         patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
     ):
         result = fetch_index_constituents(
@@ -226,7 +226,7 @@ def test_fetch_index_constituents_saves_cache(tmp_path):
         }
     )
     with (
-        patch("src.data.fetcher.ts") as mock_ts,
+        patch("data.fetcher.ts") as mock_ts,
         patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
     ):
         mock_ts.pro_api.return_value = mock_api
@@ -263,7 +263,7 @@ def test_fetch_daily_batch_uses_cache(tmp_path, fake_daily_df):
         df["code"] = code
         df.to_parquet(tmp_path / f"{code}.parquet", index=False)
 
-    with patch("src.data.fetcher.fetch_daily") as mock_fetch:
+    with patch("data.fetcher.fetch_daily") as mock_fetch:
         result = fetch_daily_batch(
             ["000001", "600519"], "2024-01-01", "2024-01-31", raw_dir=tmp_path
         )
@@ -278,7 +278,7 @@ def test_fetch_daily_batch_fetches_uncached(tmp_path, fake_daily_df):
     other_df = fake_daily_df.copy()
     other_df["code"] = "600519"
 
-    with patch("src.data.fetcher.fetch_daily", return_value=other_df) as mock_fetch:
+    with patch("data.fetcher.fetch_daily", return_value=other_df) as mock_fetch:
         result = fetch_daily_batch(
             ["000001", "600519"],
             "2024-01-01",
@@ -307,8 +307,8 @@ def test_fetch_daily_batch_returns_concatenated(tmp_path, fake_daily_df):
 def test_fetch_daily_batch_sleeps_between_uncached(tmp_path, fake_daily_df):
     """未缓存的 API 调用间应有 sleep。"""
     with (
-        patch("src.data.fetcher.fetch_daily", return_value=fake_daily_df),
-        patch("src.data.fetcher.time.sleep") as mock_sleep,
+        patch("data.fetcher.fetch_daily", return_value=fake_daily_df),
+        patch("data.fetcher.time.sleep") as mock_sleep,
     ):
         fetch_daily_batch(
             ["000001", "600519", "000858"],
@@ -337,7 +337,7 @@ def test_fetch_all_stocks_returns_dataframe(tmp_path):
         }
     )
     with (
-        patch("src.data.fetcher.ts") as mock_ts,
+        patch("data.fetcher.ts") as mock_ts,
         patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
     ):
         mock_ts.pro_api.return_value = mock_api
@@ -356,7 +356,7 @@ def test_fetch_all_stocks_uses_cache(tmp_path):
     pd.DataFrame({"code": ["000001"], "name": ["平安银行"]}).to_parquet(
         cache_file, index=False
     )
-    with patch("src.data.fetcher.ts") as mock_ts:
+    with patch("data.fetcher.ts") as mock_ts:
         result = fetch_all_stocks(date="2026-05-22", cache_dir=tmp_path)
     assert list(result["code"]) == ["000001"]
     mock_ts.pro_api.assert_not_called()
@@ -378,7 +378,7 @@ def test_fetch_fundamentals_returns_dataframe(tmp_path):
         }
     )
     with (
-        patch("src.data.fetcher.ts") as mock_ts,
+        patch("data.fetcher.ts") as mock_ts,
         patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
     ):
         mock_ts.pro_api.return_value = mock_api
@@ -395,7 +395,7 @@ def test_fetch_fundamentals_uses_cache(tmp_path):
     cache_dir.mkdir()
     cache_file = cache_dir / "20260522.parquet"
     pd.DataFrame({"code": ["000001"], "pe": [5.5]}).to_parquet(cache_file, index=False)
-    with patch("src.data.fetcher.ts") as mock_ts:
+    with patch("data.fetcher.ts") as mock_ts:
         result = fetch_fundamentals("2026-05-22", cache_dir=cache_dir)
     assert list(result["code"]) == ["000001"]
     mock_ts.pro_api.assert_not_called()

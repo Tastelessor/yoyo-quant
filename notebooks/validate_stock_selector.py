@@ -12,22 +12,21 @@ import time
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config.loader import load_config
-from src.data.fetcher import fetch_daily
-from src.data.storage import save_parquet, load_parquet
-from src.data.filters import detect_limit_price, detect_suspension
-from src.data import validate_ohlcv
-from src.factors.registry import calc_factors
-from src.context.stock_selector import evaluate_factors, select_tradable
-from src.strategies.builtin.volume_price_gtja import GTJAVolumePriceStrategy
-from src.risk.tradability import enforce_t1, filter_tradable
-from src.portfolio.allocator import equal_weight
-from src.risk.position_limit import apply_position_limit
-from src.backtest.engine import BacktestEngine
+from backtest.engine import BacktestEngine
+from config.loader import load_config
+from context.stock_selector import evaluate_factors, select_tradable
+from data import validate_ohlcv
+from data.fetcher import fetch_daily
+from data.filters import detect_limit_price, detect_suspension
+from data.storage import load_parquet, save_parquet
+from factors.registry import calc_factors
+from portfolio.allocator import equal_weight
+from risk.position_limit import apply_position_limit
+from risk.tradability import enforce_t1, filter_tradable
+from strategies.builtin.volume_price_gtja import GTJAVolumePriceStrategy
 
 # ── Config ──────────────────────────────────────────────────────────────
 cfg = load_config(Path(__file__).resolve().parent.parent / "configs" / "default.yaml")

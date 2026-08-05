@@ -5,7 +5,6 @@ Run: pytest tests/visualization/test_charts.py -v
 Inspect: open tests/visualization/output/*.png
 """
 
-import os
 from pathlib import Path
 
 import matplotlib
@@ -17,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.visualization.charts import (
+from visualization.charts import (
     plot_backtest_summary,
     plot_drawdown,
     plot_equity_curve,

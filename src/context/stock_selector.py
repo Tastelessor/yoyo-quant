@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.operators import corr, delay, rank
+from factors.operators import corr, delay, rank
 
 
 def factor_coverage(
