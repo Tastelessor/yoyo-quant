@@ -311,8 +311,9 @@ def run_monitor(
 
     Returns
     -------
-    DataFrame
-        最新 state 长表（与 STATE_COLS 一致），已落盘。
+    tuple[pd.DataFrame, list[str]]
+        (最新 state 长表（与 STATE_COLS 一致，已落盘）, 被跳过的因子列表
+        （缺输入列等无法计算的因子，如 fundamental 透传因子无对应列时）。
     """
     factors = (
         list(factor_names) if factor_names is not None else list_factors(kind="single")
@@ -345,10 +346,17 @@ def run_monitor(
 
     # ---- 逐因子计算 IC / 滚动统计 / 状态 ----
     rows: list[pd.DataFrame] = []
+    skipped: list[str] = []
     for factor in factors:
-        factor_series = run_factor(
-            factor, tail, cache_dir=cache_dir, use_cache=use_cache
-        )
+        try:
+            factor_series = run_factor(
+                factor, tail, cache_dir=cache_dir, use_cache=use_cache
+            )
+        except KeyError as exc:
+            # 缺输入列（如 fundamental 透传因子无 earnings/roe 列）→ 跳过，
+            # 不中断整批；监控只针对可用行情计算的量价因子
+            skipped.append(f"{factor}（缺列 {exc}）")
+            continue
         fdf = tail.assign(__f__=factor_series.to_numpy())
         for w in fwd_windows:
             fwd = compute_forward_returns(
@@ -382,4 +390,4 @@ def run_monitor(
     changes = diff_states(new_df, old_state)
     if not changes.empty:
         save_changes(changes, changes_path)
-    return load_state(state_path)
+    return load_state(state_path), skipped

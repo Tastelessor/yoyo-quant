@@ -12,12 +12,46 @@ import pytest
 from analysis.factor_monitor import (
     STATE_COLS,
     load_state,
+    run_monitor,
     run_state_machine,
     save_changes,
     save_state,
 )
 
 # --- run_state_machine ---
+
+
+def _ohlcv(n_stocks=10, n_days=140, seed=1):
+    """最小合成行情（close + 三状态列）。"""
+    rng = np.random.default_rng(seed)
+    dates = pd.bdate_range("2024-01-01", periods=n_days)
+    rows = []
+    for j in range(n_stocks):
+        price = 10.0 * (1 + j * 0.02)
+        for i in range(n_days):
+            price *= 1 + rng.normal(0.0001, 0.01)
+            rows.append((dates[i], f"S{j:03d}", price))
+    df = pd.DataFrame(rows, columns=["date", "code", "close"])
+    for c in ("limit_up", "limit_down", "is_suspended"):
+        df[c] = False
+    return df
+
+
+def test_run_monitor_skips_missing_column_factors(tmp_path):
+    """缺输入列的因子（如 fundamental 透传因子）应跳过，不中断整批。"""
+    df = _ohlcv()
+    state, skipped = run_monitor(
+        df,
+        factor_names=["calc_momentum_5d_change", "calc_earnings_surprise"],
+        fwd_windows=(5,),
+        window=30,
+        output_dir=tmp_path,
+        use_cache=False,
+    )
+    assert set(state["factor"]) == {"calc_momentum_5d_change"}
+    assert "calc_earnings_surprise" in " ".join(skipped)
+    assert not state.empty
+
 
 
 def test_state_machine_transitions():

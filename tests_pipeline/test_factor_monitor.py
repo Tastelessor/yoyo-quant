@@ -59,7 +59,7 @@ def extend_ohlcv(df, extra_days=30, noise=0.008, seed=7):
 def test_monitor_lifecycle_active_then_dead(tmp_path):
     df = make_ohlcv()
     out = tmp_path / "m"
-    state = run_monitor(
+    state, _ = run_monitor(
         df,
         factor_names=["calc_momentum_5d_change"],
         output_dir=out,
@@ -86,7 +86,7 @@ def test_monitor_lifecycle_active_then_dead(tmp_path):
 
 def test_monitor_multi_factor_independent(tmp_path):
     df = make_ohlcv()
-    both = run_monitor(
+    both, _ = run_monitor(
         df,
         factor_names=["calc_momentum_5d_change", "calc_momentum_20d_change"],
         output_dir=tmp_path / "both",
@@ -98,7 +98,7 @@ def test_monitor_multi_factor_independent(tmp_path):
         "calc_momentum_20d_change",
     }
     for fname in ("calc_momentum_5d_change", "calc_momentum_20d_change"):
-        single = run_monitor(
+        single, _ = run_monitor(
             df,
             factor_names=[fname],
             output_dir=tmp_path / f"single_{fname}",
@@ -112,21 +112,21 @@ def test_monitor_multi_factor_independent(tmp_path):
 def test_monitor_incremental_matches_full(tmp_path):
     df = make_ohlcv()
     df_ext = extend_ohlcv(df)
-    incremental = run_monitor(
+    incremental, _ = run_monitor(
         df_ext,
         factor_names=["calc_momentum_5d_change"],
         output_dir=tmp_path / "incr",
         cache_dir=tmp_path / "cache",
         use_cache=False,
     )  # state.parquet 不存在 → 首跑全量；再跑一次走增量
-    incremental2 = run_monitor(
+    incremental2, _ = run_monitor(
         df_ext,
         factor_names=["calc_momentum_5d_change"],
         output_dir=tmp_path / "incr",
         cache_dir=tmp_path / "cache",
         use_cache=False,
     )  # 已有 last_date → 尾部增量
-    full = run_monitor(
+    full, _ = run_monitor(
         df_ext,
         factor_names=["calc_momentum_5d_change"],
         output_dir=tmp_path / "full",
@@ -145,7 +145,7 @@ def test_monitor_dynamic_discovery(tmp_path, monkeypatch):
     monkeypatch.setattr(
         fm, "list_factors", lambda kind=None: ["calc_momentum_5d_change"]
     )
-    state = run_monitor(
+    state, _ = run_monitor(
         df,
         output_dir=tmp_path / "m",
         cache_dir=tmp_path / "cache",

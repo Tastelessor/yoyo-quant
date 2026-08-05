@@ -253,7 +253,7 @@ def factor_monitor(
         if not fwd_windows:
             raise ValueError("--windows 需为逗号分隔的正整数")
         old_state = load_state(Path(output_dir) / "state.parquet")
-        state = run_monitor(
+        state, skipped = run_monitor(
             price_df,
             factor_names=factor,
             fwd_windows=fwd_windows,
@@ -267,6 +267,12 @@ def factor_monitor(
             full=full,
             use_cache=not no_cache,
         )
+        if skipped:
+            typer.echo(
+                f"跳过 {len(skipped)} 个因子（缺输入列，无法用行情计算）: "
+                f"{', '.join(skipped)}",
+                err=True,
+            )
         changes = diff_states(state, old_state)
         status = build_status_table(state)
 
