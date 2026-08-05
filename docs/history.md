@@ -1409,3 +1409,43 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 | 2026-06 | 因子介绍由 CLI 提供（`factor list --verbose`），非脚本内 import | 用户拍板；口径统一，脚本纯调 CLI |
 | 2026-06 | 合成数据为主 + `--data` 换真实 | 用户拍板；data/clean 为空且 token 过期，脚本开箱即用且可复现 |
 | 2026-06 | 合成收益 = beta*s_i + 噪声（beta=0.02） | 截面 alpha 结构让价格派生因子（动量/OBV/RSI）IC 显著正、纯量（volume_ratio）≈0、波动率负，形成对照；docstring 注明合成 IC 偏大属正常 |
+
+## Phase 24: 全市场日 K 拉取与清洗（2026-08）
+
+### 背景
+用户需求：拉取全市场近 3 年日 K，清洗后必须含 limit_up / limit_down / is_suspended 三列。
+
+### 变更
+- **fetcher.py 保留 pre_close**：`fetch_daily` / `fetch_index_daily` / `fetch_daily_batch` 返回列增加 `pre_close`（tushare 官方前收，除权除息日已调整）。`OHLCV_SCHEMA` 不变（pre_close 为附加列，`validate_ohlcv` 只查必需列）。
+- **fetcher.py 瞬时错误重试**：`fetch_daily` 重试条件从仅限流（"过快/频率"）扩展到 `unavailable`/`timeout` 等 proxy 瞬时错误，退避 2s/4s、最多 3 次；token 错等确定性错误不重试直接抛。
+- **filters.detect_limit_price 两处修正**：
+  1. 前收盘优先取 `pre_close` 列（缺失回退 shift(1)，兼容旧调用顺序）；修复除权除息日 shift(1) 误判涨跌停的问题
+  2. 涨跌停幅度按板块区分：创业板/科创板（300/301/302/688/689 前缀）20%，其余取 `limit_pct`（默认 10%）；ST/北交所由上游股票池排除
+- **filters.detect_suspension 停牌网格补齐**：volume==0 规则保留；新增按交易日网格补齐缺失交易日（tushare daily 对停牌日无记录），补齐行 OHLCV/pre_close=NaN、is_suspended=True、已有 limit 列填 False；下界裁剪到股票首行日期（上市日前不补），上界不裁剪（股票池为当前上市股票，停牌至今需补到网格上界）；`trade_dates=None` 时用 df 内所有股票 date 并集推断网格。
+- **新增清洗入口 `data/clean.py: clean_market_data(df, trade_dates=None)`**：detect_suspension → detect_limit_price 一步完成三列标注，输出按 (code, date) 排序、无重复行。
+- **trade_calendar.py proxy 修复**：`_PROXY_URL` 从失效的 `http://124.222.60.121:8020/` 改为 `https://quantdata888.duckdns.org`（与 fetcher 一致，实验验证 trade_cal 可用）。注：`earnings.py` / `fundamentals_quarterly.py` 仍用旧失效 proxy，不在本次拉取链路中，待后续处理。
+
+### 测试
+- test_filters +7：除权日 pre_close 不误判、无 pre_close 回退 shift、板块 20%/10% 幅度、停牌网格补齐、上市日前不补、并集推断、limit 列保留
+- test_fetcher 改 2 + 加 3：列断言改子集 + pre_close 映射 + fetch_index_daily pre_close + 瞬时错误重试 + token 错误不重试
+- test_clean 新增 5：三列 bool、停牌补齐、排序去重、涨停检测
+- 全量单测 **1000 passed**、管道测试 **26 passed**，ruff 干净（earnings.py 既有 8 个 E501 未动）
+
+### 数据工程
+- `notebooks/fetch_full_market.py`：`fetch_all_stocks`（5329 只）→ `fetch_daily_batch`（`data/raw/full_market_3y/`，独立目录避免污染旧 10 年无 pre_close 缓存）→ `fetch_trade_dates` → `clean_market_data` → `data/clean/full_market_ohlcv.parquet`
+- 范围 2023-08-06 ~ 2026-08-05（近 3 年）
+- duckdns proxy 偶发瞬时 "service temporarily unavailable"（trade_cal 与日 K 均遇到），靠新增重试自愈
+
+### 并发加速（同 Phase 24 补充，2026-08）
+- **`fetch_daily_batch` 新增 `workers` 参数**（默认 1 = 串行，行为不变；>1 用 `ThreadPoolExecutor` 并发，每 worker 每次 API 调用后 sleep `sleep_sec`）。任一只股票失败抛异常、已缓存保留（断点可续）；按股票分文件缓存天然无并发写冲突。
+- **测试**：test_fetcher +2（并发 3 worker 每 worker sleep 1 次共 3 次、失败传播）；默认串行测试不变。全量单测 **1002 passed**。
+- **验证**：真实 proxy 10 workers × 20 只 17.5s（0.88s/只，较串行 ~4-5s/只 快 ~5 倍），无失败。
+- **全量拉取**：`notebooks/fetch_full_market.py` 改用 `workers=10`（用户 15000 积分确认，proxy 无限流）。用户确认后由串行（预计 ~10h）切换为并发（预计 ~1.5h）。
+
+### 全市场拉取完成 + 北交所 920 修复（同 Phase 24 补充，2026-08）
+- **发现并修复 bug**：`fetch_all_stocks` 北交所排除逻辑 `startswith(("8","4"))` 漏掉北交所 920 新代码段（2024 年后启用，330 只漏网）。改为 `startswith(("8","920"))`，TDD 补测试（920 股票断言排除）。test_fetcher 28 passed。
+- **并发参数演进**（proxy duckdns 在持续并发下劣化，实测各组合）：10w/0.3s → 6w/0.3s → 8w/1s → 4w/2s。4+2 在劣化期净速度最优（~19 只/分钟 vs 8+1 的 11 只/分钟，重试大幅减少）。
+- **最终数据**：`data/clean/full_market_ohlcv.parquet`，**4999 只 A 股（排除 ST/北交所）**、**3,540,684 行**（3 年：2023-08-07 ~ 2026-08-05，726 交易日）、55.6MB。列：date/code/open/high/low/close/pre_close/volume + limit_up/limit_down/is_suspended（均 bool，无重复 (date,code)）。
+- **三列统计**：limit_up=28,114、limit_down=7,525、is_suspended=4,207（补齐停牌日行，close/pre_close=NaN）。
+- **proxy 劣化期 6 只股票重试耗尽缺数据**（603590/603708/603899/603900/605337/605338），已逐个补拉（各 726 行），其中 603900/605338 曾连续空响应，最终补齐。
+- 原始缓存：`data/raw/full_market_3y/{code}.parquet`（4999 个，含 pre_close；920 北交所缓存已删除）。

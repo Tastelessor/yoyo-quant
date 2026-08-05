@@ -10,10 +10,14 @@
 | high | float64 | 最高价 |
 | low | float64 | 最低价 |
 | close | float64 | 收盘价 |
+| pre_close | float64 | 前收盘（tushare 官方值，除权除息日已调整；由 `fetch_daily` / `fetch_index_daily` 返回，`detect_limit_price` 优先使用，缺失时回退 shift(1)） |
 | volume | float64 | 成交量 |
-| limit_up | bool | 涨停标记（由 data.filters.detect_limit_price 标注） |
-| limit_down | bool | 跌停标记（由 data.filters.detect_limit_price 标注） |
-| is_suspended | bool | 停牌标记（由 data.filters.detect_suspension 标注） |
+| limit_up | bool | 涨停标记（由 data.filters.detect_limit_price 标注；按板块区分幅度：创业板/科创板 300/301/302/688/689 为 20%，其余 10%） |
+| limit_down | bool | 跌停标记（同 limit_up） |
+| is_suspended | bool | 停牌标记（由 data.filters.detect_suspension 标注：volume==0 或交易日网格中缺失的行；停牌日会补齐为一行，OHLCV 为 NaN） |
+
+> 清洗入口：`data.clean.clean_market_data(df, trade_dates=None)` 一次完成三列标注
+> （detect_suspension → detect_limit_price），输出按 (code, date) 排序、无重复行。
 
 ## 交易日历 — data 模块输出
 

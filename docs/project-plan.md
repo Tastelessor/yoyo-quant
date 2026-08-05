@@ -9,9 +9,10 @@
 |------|------|------|
 | 项目骨架 | ✅ 完成 | pyproject.toml, 目录结构, ruff/pytest 配置 |
 | data schema | ✅ 完成 | validate_ohlcv + 测试通过 |
-| data fetcher | ✅ 完成 | fetcher.py + 7 tests |
+| data fetcher | ✅ 完成 | fetcher.py（含 pre_close + 瞬时错误重试 + 并发 workers）+ 28 tests |
 | data storage | ✅ 完成 | storage.py + 5 tests |
-| data filters | ✅ 完成 | 涨跌停/停牌/T+1 过滤 + 5 tests |
+| data filters | ✅ 完成 | 涨跌停/停牌标注：pre_close 优先、板块幅度（创/科 20%）、停牌网格补齐 + 25 tests |
+| data (清洗入口) | ✅ 完成 | clean.py: clean_market_data 一步标注三列 + 5 tests |
 | data (股票池) | ✅ 完成 | universe.py + resolve_universe/apply_data_filters + 24 tests |
 | data (指数成分股) | ✅ 完成 | fetcher.py: fetch_index_constituents + fetch_daily_batch + 18 tests |
 | data (CSI 500 配置) | ✅ 完成 | csi500.yaml: source=index 动态获取 + 管道测试 4 tests |
