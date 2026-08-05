@@ -58,6 +58,19 @@
 - 缓存键 = (因子名, 参数哈希, 数据指纹)：调参、数据范围/内容变化均不命中旧缓存；数据指纹基于排序后非 date/code 列的内容哈希，与行顺序无关。
 - 原子写（tmp + rename）；`clear_factor_cache(name=None, cache_dir=None)` 可清理；`run_factor(..., use_cache=False)` 禁用。
 
+### 因子评估（evaluation.py）
+
+> 因子预测力的标准化评估工具（IC / IR / forward return / 分层回测），纯 DataFrame 输出，不依赖交易管线与绘图库。输入 `factor_df`（宽表，含 date/code/因子列，任意行序）+ `price_df`（date/code/close，可省略——缺省从 factor_df 的 close 列取）；**所有返回与输入逐行对齐**。
+
+| 函数 | 输出 | 说明 |
+|------|------|------|
+| `compute_forward_returns(price_df, windows=(1,5,20), exclude_untradable=False)` | `{window: Series}` | 按 code 分组的 N 数据行前向收益率；exclude 时 limit_up/limit_down/is_suspended 行置 NaN |
+| `compute_ic(factor_df, name, fwd_ret, method="spearman", min_obs=5)` | Series（index=date，name=`{factor}_ic`） | 每日截面 IC 时序；spearman/pearson/kendall；有效样本 < min_obs 的日期跳过 |
+| `compute_ir(ic_series)` | float | IR = IC 均值 / IC 标准差（ddof=1）；<2 值 NaN，恒定 IC 为 inf |
+| `compute_quantile_returns(factor_df, name, fwd_ret, n_quantiles=5, rebalance_days=None)` | dict | 每日分位分层等权组合：`quantile_returns`（q1..qn 宽表）/ `summary`（mean_return/std_return/hit_rate）/ `long_short`（qn-q1 价差）；rebalance_days=N 时每 N 行取一个调仓日 |
+| `evaluate_factor(factor_df, name, price_df=None, ...)` | dict | 一站式：`ic`（DataFrame[window, ic_mean, ic_std, ic_ir, ic_positive_ratio]）/ `ic_series` / `quantiles` |
+| `evaluate_factors(factor_df, names, price_df=None, ...)` | DataFrame | 批量比较表：`[factor, window, ic_mean, ic_std, ic_ir, ic_positive_ratio, ls_mean, ls_ir]`，每因子每窗口一行 |
+
 ### 输出字段
 
 | 字段 | 类型 | 说明 |

@@ -27,6 +27,8 @@
 | factors (GTJA 趋势) | ✅ 完成 | trend.py: 3 因子 (#21/#116/#89) |
 | factors (注册表) | ✅ 完成 | registry.py: 93 条目（51 single + 5 pair + 37 别名）, 名称/别名/tag/kind 过滤 + run_factor 缓存 + 41 tests |
 | factors (结果缓存) | ✅ 完成 | cache.py: 磁盘 parquet 缓存，键=(因子名, 参数哈希, 数据指纹) + 7 tests |
+| factors (因子评估) | ✅ 完成 | evaluation.py: IC/IR + forward return + 分层回测 + 批量比较表 + 30 tests |
+| CLI (yq) | ✅ 完成 | yq 包: factor list(含 --verbose 因子介绍)/run/evaluate + cache info/clear，typer 实现，文本/--json 双输出，python -m + console script 双入口，notebooks/icir_factor_screening.py 一键筛查 + 39 tests |
 | strategies (均值回归) | ✅ 完成 | builtin/mean_reversion.py + 8 tests |
 | strategies (RSI 反转) | ✅ 完成 | builtin/rsi_reversal.py + 10 tests |
 | strategies (动量突破) | ✅ 完成 | builtin/momentum_breakout.py + 9 tests |
@@ -112,9 +114,16 @@ src/
 │   ├── trend.py                 # GTJA 趋势因子 (3)
 │   ├── volume_price.py          # 通用量价因子 (RSI/OBV/ATR/VR)
 │   ├── volatility.py            # HV 因子
+│   ├── evaluation.py            # 因子评估 (IC/IR/forward return/分层回测)
 │   ├── cache.py                 # 因子结果磁盘缓存 (parquet, 键含参数哈希+数据指纹)
 │   ├── cointegration.py         # 协整/半衰期/Kalman Filter (pair 专用)
 │   └── registry.py              # 因子注册表 (93 条目: 51 single + 5 pair + 37 别名)
+├── yq/                          # 命令行工具 (typer)
+│   ├── cli.py                   # 根入口: factor/cache 子命令组 + --version
+│   ├── factors.py               # yq factor list/run/evaluate
+│   ├── cache.py                 # yq cache info/clear
+│   ├── output.py                # 文本表格 / --json 渲染层 (NaN→null)
+│   └── __main__.py              # python -m yq 入口
 ├── risk/
 │   ├── rules.py                 # Rule ABC + RuleContext
 │   ├── rule_engine.py           # RuleEngine

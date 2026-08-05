@@ -4,7 +4,7 @@
 > 问题按优先级编号：P0 = 影响数据正确性/架构稳定性，P1 = 影响基础设施完备度，P2 = 工程加固与测试补强。
 > 每个问题描述四要素：**位置 / 现状 / 影响 / 期望效果**。不含具体实现方案。
 > **实施顺序说明**：execution（P1-06）由用户指定最后实施——它属于实盘模块，优先级按重要性排在此处，但实施排期在全部其余问题之后。
-> **完成状态**：P0-02 已于 2026-06 完成（见 `history.md` Phase 18）。P1-01 已于 2026-06 完成（见 `history.md` Phase 19）。P1-04 已于 2026-06 完成（见 `history.md` Phase 20）。
+> **完成状态**：P0-02 已于 2026-06 完成（见 `history.md` Phase 18）。P1-01 已于 2026-06 完成（见 `history.md` Phase 19）。P1-04 已于 2026-06 完成（见 `history.md` Phase 20）。P1-05 已于 2026-06 完成（见 `history.md` Phase 21）。
 
 ## 优先级总览
 
@@ -16,7 +16,7 @@
 | P1-02 | 无增量更新，缓存不校验覆盖区间 | data | P1 |
 | P1-03 | 无数据版本管理与质量校验 | data | P1 |
 | P1-04 | 24 个已实现因子未注册，因子无存储/缓存 | factors | P1 | ✅ 已完成 |
-| P1-05 | 无 IC/IR 因子评估设施 | factors | P1 |
+| P1-05 | 无 IC/IR 因子评估设施 | factors | P1 | ✅ 已完成 |
 | P1-06 | execution 模块完全缺失（用户指定最后做） | execution | P1 |
 | P2-01 | 策略输出无运行时校验 | strategies | P2 |
 | P2-02 | 因子无去极值/截面标准化/缺失值处理，中性化仅 demean | factors | P2 |
@@ -24,7 +24,7 @@
 | P2-04 | 闲置与重复代码：adapter 旁路、_to_ts_code 三处重复、fetch_index_daily 半成品 | data/backtest | P2 |
 | P2-05 | 测试缺口：无端到端、5 个已注册策略零测试 | tests | P2 |
 | P2-06 | 集成测试过薄（仅 data/fetcher） | tests_integration | P2 |
-| P2-07 | 文档数字过时（README/ project-plan） | docs | P2 |
+| P2-07 | 文档数字过时（README/ project-plan） —— ✅ 已完成 | docs | P2 |
 | P2-08 | visualization 仅 3 个静态图，无交互/导出 | visualization | P2 |
 
 ---
@@ -77,7 +77,7 @@
 - **影响**：因子不可按名统一发现/调用，注册表口径与实际实现脱节；同一因子在多个策略中重复计算。
 - **期望效果**：全部通用因子进入注册表，注册表口径 = 实际可用因子集；因子计算结果可缓存复用。
 
-### P1-05 无 IC/IR 因子评估设施
+### P1-05 无 IC/IR 因子评估设施 —— ✅ **已完成（2026-06，见 history.md Phase 21）**
 
 - **位置**：全 src 无；仅有的 `per_period_ir`（`src/backtest/walk_forward.py:128`）是策略 per-period Sharpe，非因子 IC；`src/context/stock_selector.py` `evaluate_factors`（:133-206）是 coverage/stability/dispersion 质量审计，也非 IC/IR。因子评估仅存在于临时 notebook 脚本（`notebooks/evaluate_new_factors.py`）
 - **现状**：src 中没有任何模块计算因子暴露、因子收益率、IC、IR。
@@ -141,12 +141,10 @@
 - **影响**：真实 API 数据变化（列名、类型、新字段）无法在 CI 中捕获；多市场/多股票的真实数据正确性缺乏背书。
 - **期望效果**：集成测试覆盖行情/基本面真实获取 + 至少一次真实数据驱动的回测冒烟；无 token 自动跳过机制保持。
 
-### P2-07 文档数字过时
+### P2-07 文档数字过时 —— ✅ **已完成（2026-06，见 history.md Phase 22）**
 
 - **位置**：`README.md`（:16/184/204 写 "685 个测试"）、`docs/project-plan.md`（:28 "46 因子"、:81 "854 tests"）、README 目录/能力描述与 `src/` 实际不符（如 execution 未标注）
-- **现状**：实际测试约 888（单元 854 + 管道 26 + 集成 8），注册因子 93 条目（51 single + 5 pair + 37 别名），且仍在增长。其中 project-plan 的"46 因子"已于 P1-04（Phase 20）修正；README 测试数仍过时。
-- **影响**：文档数字与代码脱节，误导评估与交接。
-- **期望效果**：README/project-plan 的数字与结构描述与代码同步，或改为自动生成/指向单一事实来源。
+- **现状（已消除）**：README 已更新为 93 注册条目 / 1007 tests，并新增 yq CLI 章节；project-plan 状态表与目录树同步；execution 模块已在目录树标注。文档数字与代码口径一致。
 
 ### P2-08 visualization 仅 3 个静态图
 

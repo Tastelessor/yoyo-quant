@@ -5,7 +5,7 @@ A 股量化策略研究框架 —— 从数据到回测的完整管道，专注�
 ## 当前能力
 
 - **100 只 CSI 300 大市值股票**，覆盖 11 个行业板块
-- **46 个因子**（动量/均值回归/量价/波动率/VWAP/趋势），11 个可复用算子，因子注册表支持名称/别名/tag 过滤
+- **93 个因子注册条目**（51 single + 5 pair + 37 别名，覆盖动量/均值回归/量价/波动率/VWAP/趋势），11 个可复用算子，注册表支持名称/别名/tag/kind 过滤 + 磁盘缓存
 - **13 个策略**：6 个 GTJA 因子策略 + 均值回归/RSI 反转/动量突破/动量趋势/多因子/配对交易/市场状态
 - **策略包装器**：ReversedStrategy（反向信号）、RegimeSwitchStrategy（市场状态自适应路由）
 - **Context 路由层**：regime 检测 → 策略切换 → 参数路由（rebalance/top_n per regime），股票选择器（因子质量评估 → 动态股票池）
@@ -13,7 +13,9 @@ A 股量化策略研究框架 —— 从数据到回测的完整管道，专注�
 - **风控引擎**：可组合规则引擎（止损/仓位限制/T+1/涨跌停过滤）+ DrawdownCircuitBreaker（回撤断路器）
 - **交易摩擦模型**：佣金（万1/最低5元）+ 印花税（万5/卖出单边）+ 过户费 + 滑点 tick + 涨跌停价格剪裁
 - **分析工具**：参数网格扫描、管道诊断、策略×行业矩阵、因子审计（全局 + per-regime）
-- **685 个测试**：单元测试 + 管道测试 + 集成测试
+- **因子评估**：IC/IR、前向收益、分层回测（`evaluation.py`）
+- **命令行工具 `yq`**：因子注册表查询 / 计算 / IC-IR 评估 / 缓存管理（`python -m yq` 或安装后 `yq`）
+- **1007 个测试**：单元测试 + 管道测试 + 集成测试
 
 ## 定版配置回测结果
 
@@ -181,8 +183,42 @@ git clone <this-repo>
 cd yoyo-quant
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest  # 685 tests
+pytest  # 1007 tests
 ```
+
+## 命令行工具（yq）
+
+安装后（`pip install -e .`）可用 `yq` 命令，或任意目录 `python -m yq`。
+
+```bash
+yq --help                 # 顶层帮助
+
+# 因子注册表查询（支持 --tag/--kind 过滤，--json 输出结构化；--verbose 附带因子介绍）
+yq factor list
+yq factor list --kind pair --json
+yq factor list --verbose --tag momentum
+
+# 单因子计算（结果与输入逐行对齐，--param k=v 可重复传参）
+yq factor run calc_obv --input data.parquet --output obv.parquet
+yq factor run calc_rsi --input data.parquet --param window=14 --json
+
+# IC/IR + 分层评估（多因子批量比较表）
+yq factor evaluate --input factors.parquet --price price.parquet \
+    --factor calc_rsi --factor calc_hv --window 1 --window 5 --window 20
+
+# 因子磁盘缓存统计 / 清理
+yq cache info
+yq cache clear --factor calc_hv
+```
+
+IC/IR 因子筛查一键脚本（列出因子与介绍 + 单因子 + 多因子批量比较表，
+默认合成数据可复现，`--data` 换真实行情）：
+
+```bash
+python notebooks/icir_factor_screening.py
+python notebooks/icir_factor_screening.py --data data/clean/ohlcv.parquet --factor calc_hv
+
+所有命令默认输出终端表格，加 `--json` 输出合法 JSON（NaN → null），方便脚本与 notebook 消费。因子数据输入为 parquet（date/code/close 等列），不绑定特定目录。
 
 需要在 `.env` 中配置 `TUSHARE_TOKEN`。单元测试不依赖外部 API。
 
@@ -196,12 +232,14 @@ yoyo-quant/
 │   ├── config/           # YAML loader + build functions
 │   ├── context/          # regime + regime_switch + stock_selector + param_router
 │   ├── data/             # fetcher + storage + filters + universe
-│   ├── factors/          # operators(11) + 6 GTJA categories(46 factors) + registry + cointegration
+│   ├── execution/        # unified order interface (mock/live)
+│   ├── factors/          # operators(11) + 注册表(93 条目) + evaluation + cache + cointegration
 │   ├── portfolio/        # equal_weight allocator + circuit_breaker
 │   ├── risk/             # rules + rule_engine + rule_registry + tradability
 │   ├── strategies/       # base + combiner + registry + reversed + builtin/(13 strategies)
-│   └── visualization/    # charts
-├── tests/                # 685 tests (mirrors src/ structure)
+│   ├── visualization/    # charts
+│   └── yq/               # CLI: factor list/run/evaluate + cache info/clear
+├── tests/                # 1007 tests (mirrors src/ structure)
 ├── tests_pipeline/       # cross-module pipeline tests
 ├── tests_integration/    # real API (skips without token)
 ├── notebooks/            # exploration + factor audit + CB comparison

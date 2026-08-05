@@ -1305,3 +1305,107 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 
 ### 已知环境问题
 - 系统 python3（pandas 3.0）下 `tests/factors/test_neutralize.py::test_demean_with_real_like_data` 失败（datetime64 us vs ns 断言），为 pandas 3.0 行为变更所致，与本 Phase 无关；项目真实环境 `.venv`（pandas 2.3.3）下全量通过。
+
+## Phase 21: 因子评估设施 IC/IR + 分层回测（P1-05，2026-06）
+
+### 目标
+提供可复用的标准因子评估工具（IC/IR、forward return、分层回测），取代临时 notebook 脚本（`notebooks/evaluate_new_factors.py`），使评估结果可复现、可比较。
+
+### 现状（修复前）
+- 全 src 无任何 IC/IR 计算：`per_period_ir`（`src/backtest/walk_forward.py:128`）是策略 per-period Sharpe 的 mean/std（回测一致性 IR），非因子 IC；`stock_selector.evaluate_factors` 是 coverage/stability/dispersion 质量审计，也非 IC/IR。
+- 因子评估仅存在于 `notebooks/evaluate_new_factors.py`：walk-forward 组合回测 + 因子间相关矩阵，无相关系数、无分层收益，结果不可复现不可比较。
+
+### 变更
+- **新增 `src/factors/evaluation.py`**（纯 DataFrame 输出，不依赖交易管线与绘图库）：
+  - `compute_forward_returns(price_df, windows=(1,5,20), exclude_untradable=False)`：按 code 分组的 N 数据行前向收益率（复用 `pipeline_diagnostics.forward_return_analysis` 模式），返回与输入逐行对齐；exclude 时涨跌停/停牌行置 NaN。
+  - `compute_ic(factor_df, name, fwd_ret, method="spearman", min_obs=5)`：每日截面 IC 时序（默认 RankIC，pandas `Series.corr` 实现，**无 scipy 直接依赖**）；有效样本 < min_obs 的日期跳过。
+  - `compute_ir(ic_series)`：IR = IC 均值 / IC 标准差（ddof=1）；<2 值 NaN，IC 恒定（std=0）返回 inf。
+  - `compute_quantile_returns(factor_df, name, fwd_ret, n_quantiles=5, rebalance_days=None)`：每日截面 rank 分位分层等权组合，输出 `quantile_returns`（q1..qn 宽表）/ `summary`（mean/std/hit_rate）/ `long_short`（qn-q1 价差）；`rebalance_days=N` 每 N 数据行取一个调仓日（与 `pipeline.py` 同款语义）。
+  - `evaluate_factor(...)`：一站式，输出 `{ic, ic_series, quantiles}`。
+  - `evaluate_factors(factor_df, names, ...)`：批量比较表 `[factor, window, ic_mean, ic_std, ic_ir, ic_positive_ratio, ls_mean, ls_ir]`，每因子每窗口一行，作为策略开发的标准筛选环节。
+- 输入约定与 `calc_factors` 宽表输出兼容：任意行序（内部排序计算后映射回输入顺序）；`price_df` 省略时从 `factor_df` 的 close 列取。
+- 决策（用户拍板）：模块落点 `src/factors/evaluation.py`（P1-05 归属 factors）；IC/分层默认不剔除涨跌停/停牌（纯预测力口径），提供 `exclude_untradable` 参数按需剔除；纯 DataFrame 输出不引入 matplotlib。
+
+### 测试
+- 新增 `tests/factors/test_evaluation.py`（27 tests）：forward return 基本/多窗口/乱序输入对齐/exclude 剔除/缺列报错；IC 完美正负相关（≈±1）/噪声近零/min_obs 过滤/NaN 行剔除/pearson/index 排序/缺列报错；IR 边界（空/单值/恒定）；分层收益单调性/多空价差符号/rebalance 采样/二分/样本不足报错；evaluate_factor 结构/price_df 省略；evaluate_factors 批量表结构与值正确。
+- factors 目录 294 tests 通过；全量单元 + 管道预计 ~968 tests（最终数字以验证为准）。
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-06 | 模块落点 `src/factors/evaluation.py` | 用户拍板；P1-05 归属 factors，与 run_factor/calc_factors 天然衔接，测试归 tests/factors/ |
+| 2026-06 | IC 默认不剔除涨跌停/停牌样本 | 用户拍板；评估纯预测力（学术口径），`exclude_untradable` 参数按需剔除 |
+| 2026-06 | 纯 DataFrame 输出，不引入 matplotlib | 用户拍板；结构化输出最易复现比较，图表另走 visualization 层 |
+| 2026-06 | 用 pandas `Series.corr(method="spearman")` 而非 scipy | scipy 仅为 statsmodels 传递依赖，未显式声明；pandas 原生实现免新增直接依赖 |
+| 2026-06 | forward return 沿用"N 数据行"口径 | 与 `pipeline_diagnostics` 全库统一；交易日历感知的持有期收益留待后续增强 |
+| 2026-06 | 返回与输入逐行对齐 | 与 run_factor 契约一致，调用方无需自行排序，杜绝乱序错位 |
+
+### 已知环境问题
+- 与 Phase 20 相同：系统 python3（pandas 3.0）下 `test_demean_with_real_like_data` 失败为预存在环境差异，`.venv`（pandas 2.3.3）下全量通过。
+
+## Phase 22: 命令行工具 yq + import 口径统一（2026-06）
+
+### 目标
+1. 解决"IC/IR 等模块功能无统一 CLI 调用入口"（用户提出）：所有能力只能通过 24 个 `notebooks/*.py` 脚本各自硬编码调用。
+2. console script 暴露的 import 口径问题：项目内部用 `from src.xxx import`，但 editable 安装把 `src/` 目录映射进 sys.path（顶层导入），导致从任意 cwd 运行时 `import src.factors` 失败。
+
+### 变更
+- **新增 `src/yq/` 包**（typer 0.27，pyproject 新增依赖 + `[project.scripts] yq = "yq.cli:app"`）：
+  - `yq factor list [--tag] [--kind]`：注册表查询（name/kind/tags/params）
+  - `yq factor run NAME --input x.parquet [--param k=v ...] [--output] [--no-cache]`：单因子计算（复用 `run_factor`，结果与输入逐行对齐）
+  - `yq factor evaluate --input f.parquet [--price] --factor X ... [--window] [--method] [--quantiles]`：IC/IR + 分层批量比较表（复用 `evaluate_factors`）
+  - `yq cache info/clear [--factor] [--cache-dir]`：磁盘缓存统计与清理
+  - `src/yq/output.py`：统一渲染层，默认文本表格、`--json` 输出合法 JSON（NaN/NaT/inf → null）
+  - 双入口：`python -m yq`（`__main__.py`）+ console script `yq`
+- **import 口径统一（全项目重构）**：`from src.xxx` / `import src.xxx` / mock patch 字符串 `"src.xxx"` 共 462+ 处全部改为顶层导入（`from factors.registry` 等），覆盖 src/ tests/ tests_pipeline/ tests_integration/ notebooks/。根因：editable finder 将 src 目录直接映射进 sys.path，`src.` 前缀只在 cwd=项目根 时可用；而 console script 从任意 cwd 运行必然失败。统一后与安装形态（wheel 顶层包）天然一致。
+- **pyproject**：dependencies + `typer>=0.12`；新增 `[project.scripts]`。
+- **文档**：README 新增"命令行工具（yq）"章节 + 数字修正（93 条目、1007 tests）；project-plan 状态表与目录树更新；infrastructure-todo P2-07（README 数字过时）完成。
+
+### 测试
+- 新增 `tests/cli/`：test_output.py（渲染层 NaN→null/ISO datetime/空表）、test_cli.py（help/version/未知命令冒烟）、test_factors_cmd.py（list 过滤与 JSON、run 对齐/参数/输出 parquet/pair 拒绝/未知因子、evaluate IC≈1/多因子/无 price 回退/missing column）、test_cache_cmd.py（info 统计/clear 全部与单因子）。
+- typer 0.27 适配：`no_args_is_help` 与 eager callback 交互变化 → 改 `invoke_without_command=True` + `ctx.get_help()`；`Typer` 无 `get_help` 方法。
+- 错误消息走 stderr（`err=True`）+ exit code 1；typer 0.27 下 `--version` 需 eager option + callback 提前 `raise typer.Exit()`。
+- 全量：**1007 passed**（单元 + 管道），ruff 全量 errors 从 537（基线）降至 388（全部为预存在 E501/E402/F841）。
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-06 | 首批子命令 = 只读查询 + 评估（factor list/run/evaluate + cache info/clear） | 用户拍板；无需 token 立即可用，验证入口骨架后再扩 pipeline |
+| 2026-06 | CLI 框架用 typer | 用户拍板；类型注解驱动，pyproject 新增依赖 |
+| 2026-06 | `python -m yq` + console script `yq` 双入口 | 用户拍板；任何环境可跑 + 安装后短命令 |
+| 2026-06 | 文本表格 + `--json` 双输出 | 用户拍板；终端可读 + 脚本/notebook 消费 |
+| 2026-06 | 全项目统一顶层导入（462+ 处） | 用户拍板；与 editable/wheel 安装形态一致，console script 任意 cwd 可用，一次修净 |
+| 2026-06 | 数据输入显式 `--input parquet` | `data/clean/` 为空且 notebooks 各自加载；不绑死目录，灵活可复现 |
+| 2026-06 | 错误消息走 stderr + exit 1 | 标准 CLI 行为，stdout 留给数据输出（管道友好） |
+
+### 已知环境问题
+- 与 Phase 20/21 相同：系统 python3（pandas 3.0）下 `test_demean_with_real_like_data` 失败为预存在环境差异，`.venv`（pandas 2.3.3）下全量通过。
+
+## Phase 23: yq factor list --verbose + IC/IR 筛查脚本（2026-06）
+
+### 目标
+用户提出：CLI 已有入口后，直接测试各因子 IC/IR；在 notebooks/ 建可复用脚本——列出当前因子及介绍、展示单一因子与多因子批量比较表。
+
+### 变更
+- **`yq factor list --verbose`**：新增 `--verbose` 选项，追加 `description` 列（因子函数 docstring 首行，`inspect.getdoc`）；别名与主因子共享同一函数 → 介绍一致。默认输出不变（避免表格变宽），`--json` 同理。
+- **`notebooks/icir_factor_screening.py`**（可复用，subprocess 调 `python -m yq`）：
+  1. `yq factor list --verbose`：全部注册因子 + 介绍
+  2. 数据：`--data path.parquet` 用真实行情（校验 date/code/close）；缺省生成合成行情（30 股 × 250 交易日，收益 = beta*s_i + 噪声，s_i 为每股隐藏 alpha → 价格派生因子动量/OBV/RSI IC 显著、纯量 volume_ratio IC≈0），参数化文件名缓存（`synthetic_ohlcv_{n}_{d}_{seed}.parquet`），每次清理中间因子产物
+  3. 单一因子：`yq factor run` → `yq factor evaluate`（1/5/20 窗口 IC 均值/IC_IR/分层多空）
+  4. 多因子批量：因子 parquet 按 (date, code) 拼面板 → `yq factor evaluate` 比较表（5 日窗口，每因子一行）
+- 参数：`--factor`（可重复，缺省演示集 6 个）、`--n-stocks/--n-days/--seed/--no-cache`。
+
+### 测试
+- `tests/cli/test_factors_cmd.py` +3：verbose 文本含 description/OBV、verbose JSON 有 description 且别名与主因子一致、默认 JSON 无 description。
+- 冒烟：脚本端到端跑通；合成数据（beta=0.02）下动量/OBV/RSI 等价格派生因子 IC 0.5-0.93（窗口越长越显著）、calc_hv 负 IC（-0.05~-0.08）、calc_volume_ratio（纯量）IC≈0。价格派生因子普遍显著是合成强动量结构的自然结果，文案已如实标注。
+- 全量 **1012 passed**，ruff 干净。
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-06 | 因子介绍由 CLI 提供（`factor list --verbose`），非脚本内 import | 用户拍板；口径统一，脚本纯调 CLI |
+| 2026-06 | 合成数据为主 + `--data` 换真实 | 用户拍板；data/clean 为空且 token 过期，脚本开箱即用且可复现 |
+| 2026-06 | 合成收益 = beta*s_i + 噪声（beta=0.02） | 截面 alpha 结构让价格派生因子（动量/OBV/RSI）IC 显著正、纯量（volume_ratio）≈0、波动率负，形成对照；docstring 注明合成 IC 偏大属正常 |
