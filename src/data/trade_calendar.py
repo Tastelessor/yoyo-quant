@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-_PROXY_URL = "http://124.222.60.121:8020/"
+_PROXY_URL = "https://quantdata888.duckdns.org"
 
 # 一次全量拉取的覆盖区间（tushare trade_cal 参数，按年分片）
 _FETCH_START_YEAR = 1990

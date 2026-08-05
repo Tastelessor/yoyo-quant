@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-_PROXY_URL = "http://124.222.60.121:8020/"
+_PROXY_URL = "https://quantdata888.duckdns.org"
 
 
 def _to_ts_code(code: str) -> str:

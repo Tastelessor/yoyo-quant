@@ -1,5 +1,6 @@
 import pandas as pd
 
+from data.clean import clean_market_data
 from data.earnings import build_earnings_panel, fetch_earnings_history
 from data.filters import detect_limit_price, detect_suspension
 from data.storage import load_parquet, save_parquet
@@ -26,6 +27,7 @@ __all__ = [
     "TRADE_CAL_SCHEMA",
     "apply_data_filters",
     "build_earnings_panel",
+    "clean_market_data",
     "fetch_earnings_history",
     "detect_limit_price",
     "detect_suspension",
