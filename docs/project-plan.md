@@ -60,6 +60,7 @@
 | analysis (参数扫描) | ✅ 完成 | param_sweep.py + plot.py + 18 tests |
 | analysis (管道诊断) | ✅ 完成 | pipeline_diagnostics.py + 7 tests |
 | analysis (行业矩阵) | ✅ 完成 | pool_matrix.py: 策略×行业交叉回测 + 12 tests |
+| analysis (因子生命周期监控) | ✅ 完成 | factor_monitor.py: 滚动 IC/IR/t 状态机（active/decaying/dead/reverse）+ 尾部增量 + 持久化 + 绘图 + yq factor monitor CLI；evaluation.py +3 滚动原语 + 47 tests |
 | config (YAML) | ✅ 完成 | loader + build_strategies/build_risk_engine/build_regime_switch + 12 tests |
 | context (regime 检测) | ✅ 完成 | breadth + 自适应波动率 + EMA + 持续期 + 指数过滤 + 19 tests |
 | context (regime switch) | ✅ 完成 | RegimeSwitchStrategy + confirmation_lag(10) + build_regime_switch |
@@ -92,9 +93,10 @@
 src/
 ├── analysis/
 │   ├── param_sweep.py           # 参数网格搜索 + 结果排序
-│   ├── plot.py                  # 热力图 + 指标柱状图
+│   ├── plot.py                  # 热力图 + 指标柱状图 + 因子生命周期双轴图/健康热力图
 │   ├── pipeline_diagnostics.py  # 管道诊断工具
-│   └── pool_matrix.py           # 策略 × 行业矩阵回测
+│   ├── pool_matrix.py           # 策略 × 行业矩阵回测
+│   └── factor_monitor.py        # 因子生命周期状态机 + 尾部增量 + 持久化
 ├── config/
 │   ├── __init__.py
 │   └── loader.py                # YAML 加载 + build 函数

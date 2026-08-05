@@ -1449,3 +1449,49 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 - **三列统计**：limit_up=28,114、limit_down=7,525、is_suspended=4,207（补齐停牌日行，close/pre_close=NaN）。
 - **proxy 劣化期 6 只股票重试耗尽缺数据**（603590/603708/603899/603900/605337/605338），已逐个补拉（各 726 行），其中 603900/605338 曾连续空响应，最终补齐。
 - 原始缓存：`data/raw/full_market_3y/{code}.parquet`（4999 个，含 pre_close；920 北交所缓存已删除）。
+
+## Phase 25: 因子生命周期监控（2026-08-05）
+
+### 决策记录
+- **形态**：一次性筛查升级为**持续监控**——游资因子有效窗口 2-8 个月，监控支撑"因子失效就换"决策
+- **数据范围**：全市场（除北交所/ST），近 3 年（AI 量化普及因子衰减加速，"时间太长反而找不出好因子"）；监控系统按日频交易设计，评估在日级尺度统计
+- **判定双轨**：滚动 t 统计量为主（|t|>2 活跃、<1 失效、中间维持），0.7/0.3 IR 仅作绘图参考线——因 IR×√window≈t，60 日窗口 IR=0.7↔t≈5.4 几乎无因子达到、0.3↔t≈2.3 几乎全因子低于，区分度差，不能作判定阈值
+- **防抖**：连续 ≥20 交易日（min_sustain）才切换状态，防止噪声抖动
+- **因子范围**：`list_factors(kind="single")` 动态发现全部量价 single 因子（88 个），不硬编码列表
+- **增量策略**：state 长表持久化，每次只重算 `last_date - window - 因子 lookback 缓冲` 之后的尾部；`--full` 全量重算（冷启动/阈值校准）。2 年数据全量首跑分钟级，尾部增量秒级
+- **模块边界**：滚动原语放 `factors/evaluation.py`（纯函数，与 `compute_ic` 输出 Series 直接 rolling）；状态机/持久化/编排在 `analysis/factor_monitor.py`；不抽公共滚动层、不与 `walk_forward.generate_windows`（train/test 回测窗口语义）耦合
+
+### Task 0：数据修复前置（涨跌停标注错误会污染 IC）
+- **北交所过滤回归**：`startswith(("8","4"))` 漏掉 920 新代码段 → 改 `("4","8","920")` + market 列兜底
+- **涨跌停精度**：价格比较改 `np.round(prev_close*(1±pct), 2)` 到分（原直接乘 10%/20% 导致 5.025 类奇数分前收漏判）
+- **停牌补齐上界**：补齐裁剪到 `min(网格上界, df 内最大日期)`，不再越过最后数据日
+- **清洗入口**：`data/clean.py: clean_market_data`（detect_suspension → detect_limit_price）
+- **proxy 修复**：`_PROXY_URL` 统一 HTTPS duckdns；`notebooks/test_tushare.py` 密钥改环境变量注入（硬编码密钥从源码移除）
+- 重清洗后标注大幅修正：limit_up 28,114→**44,661**、limit_down 7,525→**13,543**
+- 全量 **1011 passed + 26 pipeline passed**
+
+### Task 1：滚动评估原语（factors/evaluation.py，TDD +12 tests）
+- `compute_rolling_ic(ic_series, window, min_periods=None)`：滚动 IC 均值
+- `compute_rolling_ir(...)`：滚动 IR = 滚动均值/滚动标准差（ddof=1；std=0 → inf，与 `compute_ir` 一致）
+- `compute_rolling_tstat(...)`：t = IR × √n（n=窗口内有效样本数），与窗口长度解耦，是状态机判定主输入
+
+### Task 2：状态机 + 持久化 + 编排（analysis/factor_monitor.py）
+- 状态机 `run_state_machine`：active/decaying/dead/reverse 五态（含 t 反向显著 → reverse），sustain_days 防抖
+- 持久化：`state.parquet`（9 列长表 `(date, factor, fwd_window)`，运行前备份 `state.bak.parquet`）、`changes.parquet`（`(date, factor, fwd_window, old_state, new_state)`，无切换不落盘）
+- `run_monitor` 编排：动态发现 single 因子 → 尾部增量窗口（`last_date - window - lookback 缓冲`）→ 滚动统计 → 状态机 → diff → 落盘
+- 管道测试：增量语义（续跑只重算尾部、旧尾部同值不重复切换）、多因子独立性、全链路 schema
+
+### Task 3：yq factor monitor CLI（yq/factors.py + yq/monitor.py）
+- 参数：`--data/--factor/--windows(默认5)/--window(60)/--min-sustain(20)/--min-obs(5)/--t-active(2.0)/--t-decay(1.0)/--ir-active-line(0.7)/--ir-dead-line(0.3)/--full/--no-cache/--output-dir/--json`
+- 状态摘要表（每 factor×fwd_window 一行，dead 置顶）+ 本次状态切换 diff
+- **端到端验证**（全市场 4999 股 × 近 3 年，calc_hv fwd=5 window=60）：首跑 **3.7s**、增量第二次 **1.9s**；state 701 行（726 交易日 - 20 lookback - 5 fwd）2023-09-04→2026-07-29；calc_hv 判 dead（最新 t=-3.59，2026-05-26 进入，负 t 说明 HV 当前为反向因子）
+
+### Task 4：绘图（analysis/plot.py）
+- `plot_factor_lifecycle`：双轴——左轴滚动 IR（+0.7/0.3 参考线）、右轴 t 统计量（+±2/±1 判定线）；背景按状态着色（active 绿/decaying 黄/dead 红/reverse 灰蓝）
+- `plot_factor_health_heatmap`：x=时间、y=因子（factor×fwd_window）、颜色=滚动 IR（RdYlGn 对称截断 5/95 百分位、NaN 浅灰）
+- CLI 保存 `figures/health_heatmap.png` + 每 (factor,fwd) 一张 lifecycle PNG（Agg 后端，`--json` 输出 figures 键）
+
+### 测试与提交
+- 全量单测 **1053 passed**（+滚动 12 + monitor 16 + plot 11 + CLI monitor 9 等），ruff 干净（既有 test_earnings/test_storage E501 未动）
+- commits：`02af806`(北交所)→`71ef66a`(涨跌停精度)→`7d158ae`(停牌上界)→`a656ac0`(限频)→`1a04a43`(密钥)→`4717d07`(幂等)→`ee803b9`(downcast)→`654b3de`(清洗管道)→`afba929`(fetch 脚本)→`62d993d`(文档)→`cefc7e8`(print 格式)→ Task1..4 逐步提交，本 Phase 收尾 `8180aa4`
+- 剩余：Task 6 全量首跑（88 single 因子）+ 阈值校准（未开始）

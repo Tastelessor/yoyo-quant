@@ -71,9 +71,42 @@
 | `compute_forward_returns(price_df, windows=(1,5,20), exclude_untradable=False)` | `{window: Series}` | 按 code 分组的 N 数据行前向收益率；exclude 时 limit_up/limit_down/is_suspended 行置 NaN |
 | `compute_ic(factor_df, name, fwd_ret, method="spearman", min_obs=5)` | Series（index=date，name=`{factor}_ic`） | 每日截面 IC 时序；spearman/pearson/kendall；有效样本 < min_obs 的日期跳过 |
 | `compute_ir(ic_series)` | float | IR = IC 均值 / IC 标准差（ddof=1）；<2 值 NaN，恒定 IC 为 inf |
+| `compute_rolling_ic(ic_series, window, min_periods=None)` | Series | 滚动窗口 IC 均值（`rolling(window).mean()`），index 与输入一致；min_periods=None 时窗口须填满 |
+| `compute_rolling_ir(ic_series, window, min_periods=None)` | Series | 滚动 IR = 滚动均值/滚动标准差（ddof=1）；std=0 → inf，与 `compute_ir` 语义一致 |
+| `compute_rolling_tstat(ic_series, window, min_periods=None)` | Series | 滚动 t 统计量 = 滚动 IR × √n（n=窗口内有效样本数），与窗口长度解耦；std=0 → inf |
 | `compute_quantile_returns(factor_df, name, fwd_ret, n_quantiles=5, rebalance_days=None)` | dict | 每日分位分层等权组合：`quantile_returns`（q1..qn 宽表）/ `summary`（mean_return/std_return/hit_rate）/ `long_short`（qn-q1 价差）；rebalance_days=N 时每 N 行取一个调仓日 |
 | `evaluate_factor(factor_df, name, price_df=None, ...)` | dict | 一站式：`ic`（DataFrame[window, ic_mean, ic_std, ic_ir, ic_positive_ratio]）/ `ic_series` / `quantiles` |
 | `evaluate_factors(factor_df, names, price_df=None, ...)` | DataFrame | 批量比较表：`[factor, window, ic_mean, ic_std, ic_ir, ic_positive_ratio, ls_mean, ls_ir]`，每因子每窗口一行 |
+
+### 因子生命周期监控（analysis/factor_monitor.py）
+
+> 把因子评估升级为持续监控：对每 (factor, fwd_window) 的日频 IC 时序计算滚动 IC/IR/t 统计量，按双轨阈值（t 统计量为主、IR 参考线仅绘图）判定因子处于 active / decaying / dead / reverse 状态，支持尾部增量更新与状态持久化。输入为 data 模块行情（含 `limit_up`/`limit_down`/`is_suspended` 状态列，评估默认排除不可交易日）。
+
+| 落盘 | 路径 | 说明 |
+|------|------|------|
+| state 长表 | `data/audit/factor_monitor/state.parquet` | 每 (date, factor, fwd_window) 一行的滚动统计快照；运行前自动备份为 `state.bak.parquet` |
+| changes | `data/audit/factor_monitor/changes.parquet` | 本次运行发生的状态切换（无切换不落盘） |
+| 图 | `data/audit/factor_monitor/figures/` | `health_heatmap.png`（全因子总览）+ `lifecycle_{factor}_fwd{w}.png`（单因子双轴时序） |
+
+**state 表**（`STATE_COLS`）：`[date, factor, fwd_window, ic, rolling_ic, rolling_ir, t_stat, state, sustain_days]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| date | datetime64 | 统计日 |
+| factor | str | 因子名（registry 动态发现，不硬编码列表） |
+| fwd_window | int | forward 收益窗口（交易日数） |
+| ic | float64 | 当日截面 IC（spearman） |
+| rolling_ic | float64 | 滚动窗口 IC 均值（默认 window=60 交易日） |
+| rolling_ir | float64 | 滚动 IR（mean/std，ddof=1；std=0 → inf） |
+| t_stat | float64 | 滚动 t 统计量 = IR × √n；判定主输入（\|t\|>2 活跃、<1 失效、中间维持） |
+| state | str | `active` / `decaying` / `dead` / `reverse`（t 反向显著时） |
+| sustain_days | int | 当前状态连续持续交易日数（≥ min_sustain 才允许切换，防抖） |
+
+**changes 表**（`CHANGE_COLS`）：`[date, factor, fwd_window, old_state, new_state]`
+
+**CLI**：`yq factor monitor --data <ohlcv.parquet> [--factor 名 可重复] [--windows 5] [--window 60] [--min-sustain 20] [--min-obs 5] [--t-active 2.0] [--t-decay 1.0] [--ir-active-line 0.7] [--ir-dead-line 0.3] [--full] [--no-cache] [--output-dir] [--json]`
+- 首次运行全量计算；之后默认只重算尾部（`state.parquet` 记录的历史之后）；`--full` 全量重算
+- 输出状态摘要表（每 factor×fwd_window 一行，dead 置顶）与本次状态切换 diff
 
 ### 输出字段
 
