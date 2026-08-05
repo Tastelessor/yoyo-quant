@@ -88,6 +88,7 @@ def compute_overall_metrics(
             "total_return": 0.0, "annual_return": 0.0,
             "sharpe_ratio": 0.0, "max_drawdown": 0.0,
             "per_period_sharpe_mean": 0.0, "per_period_sharpe_std": 0.0,
+            "per_period_ir": 0.0,
         }
 
     eq = equity_curve.sort_values("date").reset_index(drop=True)
@@ -124,6 +125,7 @@ def compute_overall_metrics(
     pp_sharpes = per_period["sharpe_ratio"]
     pp_sharpe_mean = float(pp_sharpes.mean()) if len(pp_sharpes) > 0 else 0.0
     pp_sharpe_std = float(pp_sharpes.std()) if len(pp_sharpes) > 1 else 0.0
+    pp_ir = pp_sharpe_mean / pp_sharpe_std if pp_sharpe_std > 1e-10 else 0.0
 
     return {
         "total_return": total_return,
@@ -132,6 +134,7 @@ def compute_overall_metrics(
         "max_drawdown": max_drawdown,
         "per_period_sharpe_mean": pp_sharpe_mean,
         "per_period_sharpe_std": pp_sharpe_std,
+        "per_period_ir": pp_ir,
     }
 
 
@@ -222,6 +225,7 @@ def walk_forward_backtest(
             "total_return": 0.0, "annual_return": 0.0,
             "sharpe_ratio": 0.0, "max_drawdown": 0.0,
             "per_period_sharpe_mean": 0.0, "per_period_sharpe_std": 0.0,
+            "per_period_ir": 0.0,
         },
         "equity_curve": pd.DataFrame(columns=["date", "equity"]),
     }
@@ -538,6 +542,7 @@ def walk_forward_multi_silo(
             "total_return": 0.0, "annual_return": 0.0,
             "sharpe_ratio": 0.0, "max_drawdown": 0.0,
             "per_period_sharpe_mean": 0.0, "per_period_sharpe_std": 0.0,
+            "per_period_ir": 0.0,
         },
         "equity_curve": pd.DataFrame(columns=["date", "equity"]),
     }

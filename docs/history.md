@@ -1127,3 +1127,67 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 | 2026-05-29 | 保留 walk-forward 但标注局限性 | 连续回测验证了策略有效性，walk-forward 用于参数选择仍合理 |
 
 **结论**：earnings-only N=10 rb=15 是当前最优配置。Std < 1.2 需要架构层面改变（拉长 test_months、引入跨 period 状态累积、或切换到连续回测模式）。
+
+---
+
+## Phase 17: 多源因子扩展 ✅ 完成
+
+### 目标
+引入不同经济来源的因子（价值、质量、流动性），提高因子分散化和 IR。
+
+### 背景
+- 37 个 GTJA 因子 + 2 个 earnings 因子全部来自同一经济来源（价格-成交量行为）
+- Walk-forward IR 仅 0.225，因子间相关性 0.45-0.71
+- 需要不同经济来源的因子来打破 IR 天花板
+
+### 新增因子（7 个）
+
+| 类别 | 因子 | 说明 |
+|------|------|------|
+| 价值 | `calc_ep` | EP = 1/PE（线性化，PE<=0 → NaN） |
+| 价值 | `calc_bp` | BP = 1/PB（同上） |
+| 质量 | `calc_roe_level` | ROE 水平（高质量 = 高 ROE） |
+| 质量 | `calc_roe_stability` | ROE 稳定性（8 季度 std 取负，越稳定分数越高） |
+| 质量 | `calc_cashflow_quality` | 每股经营现金流（OCFPS） |
+| 流动性 | `calc_amihud` | Amihud 非流动性 = mean(|return| / turnover) |
+| 流动性 | `calc_turnover` | 换手率 = volume * close / total_mv |
+
+### 新增数据源
+- `src/data/fundamentals_quarterly.py` — 调用 `pro.fina_indicator()` 获取季度财务指标
+  - PIT 对齐：`merge_asof` backward on `ann_date`（非 `end_date`，避免前视偏差）
+  - Z-Score 标准化（同 earnings.py 模式）
+  - 字段：roe, ocfps
+
+### 跳过的因子
+- **分析师修正**：`analyst_forecast` 接口在 proxy 上不可用，`report_rc` 需额外权限
+- **盈利动量**：用 `forecast` API 构造的信号与现有 `earnings_surprise` 高相关，无分散化价值
+- 用户决策：跳过，把精力放在质量因子上
+
+### 新增策略
+- `fundamental_diversified` — 组合非价格因子，截面排名加权打分
+  - 候选池 9 个因子（ep/bp/amihud/turnover/roe_level/roe_stability/cashflow_quality/earnings_surprise/earnings_acceleration）
+  - 单因子 walk-forward 评估后只保留 3 个：earnings_surprise（盈利）/ amihud（流动性）/ roe_stability（质量），每类经济来源各取一个
+  - 其余候选（ep/bp/turnover/roe_level/cashflow_quality/earnings_acceleration）无分散化增益，未纳入组合
+- 配置：`configs/fundamental_diversified.yaml`
+
+### 测试
+- 47 个新测试（test_value.py: 17, test_liquidity.py: 13, test_quality.py: 10, test_fundamentals_quarterly.py: 7）
+- 全量 833 测试通过
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-05-29 | 跳过盈利动量因子 | 与 earnings_surprise 高相关，无分散化价值 |
+| 2026-05-29 | ROE 拆分为 level + stability | "高质量"和"稳定质量"是不同目标，让数据决定 |
+| 2026-05-29 | EP/BP 用倒数而非原始 PE/PB | EP 是线性的，PE 的倒数关系让极端值失真 |
+| 2026-05-29 | 质量因子用 passthrough 模式 | 季度数据的 PIT 对齐和滚动计算在数据层完成 |
+
+**评估脚本**：`notebooks/evaluate_new_factors.py` — 单因子 walk-forward IR + 相关性矩阵 + 组合策略评估
+
+### 收尾补充（2026-05-30 补）
+- **补测试**：`tests/strategies/test_fundamental_diversified.py` 新增 21 个策略测试（此前策略无任何测试覆盖）——契约列/signal 值域与 dtype/confidence 范围/warmup 边界/单股票与短历史/空数据/自定义权重/行业中性化/无重复行
+- **修 bug**：`fundamental_diversified_signal` 对空 DataFrame（带因子列）输入时 `all_dates[-1]` 越界 IndexError，新增空输入早退分支
+- **文档修正**：策略 docstring / project-plan / 本文件此前写"7 因子"，实际候选池 9 个因子、评估后仅保留 3 个（earnings_surprise/amihud/roe_stability）；`evaluate_new_factors.py` 的 "Combined (7 factors)" 实验标签修正为实际组合
+- **清理**：`src/factors/__init__.py` 的 `__all__` 中 `calc_amihud` 重复项删除
+- 全量 **854 tests 通过**（62 个测试文件）

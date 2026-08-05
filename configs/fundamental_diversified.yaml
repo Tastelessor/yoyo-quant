@@ -1,0 +1,15 @@
+strategies:
+  combiner:
+    type: weighted_vote
+    threshold: 0.0
+  rules:
+    - name: fundamental_diversified
+      params:
+        rebalance: 15
+        top_n: 10
+        bottom_n: 5
+        weights:
+          earnings_surprise: 1.0
+          amihud: 0.8
+          roe_stability: 0.6
+      weight: 1.0

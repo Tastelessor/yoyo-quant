@@ -65,6 +65,11 @@
 | data (盈利断层) | ✅ 完成 | earnings.py: PIT 滚动池 + Z-Score 标准化 + 27 tests |
 | factors (盈利断层) | ✅ 完成 | earnings.py: calc_earnings_surprise + calc_earnings_acceleration + 7 tests |
 | strategies (盈利断层) | ✅ 完成 | earnings_surprise.py: GTJAEarningsSurpriseStrategy + 12 tests |
+| factors (价值) | ✅ 完成 | value.py: calc_ep(EP=1/PE) + calc_bp(BP=1/PB) + 17 tests |
+| factors (流动性) | ✅ 完成 | liquidity.py: calc_amihud + calc_turnover + 13 tests |
+| data (季度财务) | ✅ 完成 | fundamentals_quarterly.py: fina_indicator PIT 面板 + 7 tests |
+| factors (质量) | ✅ 完成 | quality.py: roe_level + roe_stability + cashflow_quality + 10 tests |
+| strategies (基本面组合) | ✅ 完成 | fundamental_diversified.py: 3 因子 IR 加权（评估后从 9 个候选中筛选）+ YAML 配置 |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
 | context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
 | strategies (多类别组合) | ✅ 完成 | multi_category.py: 6 类别加权投票 + 7 tests |
@@ -73,7 +78,7 @@
 | risk (止盈规则) | ✅ 重构 | 已迁移到 BacktestEngine（与止损统一管理） |
 | execution | 🔲 未开始 | 统一下单接口 |
 
-**测试总计**：786 tests（57 个测试文件）
+**测试总计**：854 tests（62 个测试文件）
 
 ## 目录结构
 

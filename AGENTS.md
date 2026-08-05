@@ -67,6 +67,12 @@
 - **每个新 phase 开始前**，先 invoke `karpathy-guidelines` skill，读完再写代码
 - Phase 1 教训：浮点精度、pandas API 返回类型、NumPy vs Python 类型——全是 Karpathy 警告过的坑
 
+## 经验教训（详情见 README.md）
+- A 股大市值年化收益天花板约 12-15%，10y Sharpe 天花板约 0.6；3 年回测不可信，必须 ≥10 年验证
+- gtja_momentum 是唯一跨周期稳定策略；reversed_gtja_vwap 是 3y 过拟合典型（Sharpe 1.11 → 10y 0.30）
+- A 股有效信号是资金流而非统计相关（#118 上下影线比、#178 日收益×量单跑赢 3 因子基线）
+- 滑点处理坑：limit_up/limit_down 是 bool 标志（是否涨停），不是价格，_apply_slippage 必须做类型检查，否则 min(price, False)=0
+
 ## 环境
 - Python >= 3.11
 - 依赖管理：`pip install -e .`（或 `pip install -e ".[dev]"` 安装开发依赖）
@@ -81,7 +87,7 @@
 - 外部依赖（tushare、rqalpha）在单元测试中必须 mock，不依赖网络
 
 ### 目录与运行
-- 单元测试：`tests/`，运行 `pytest`（快速，无外部依赖）
+- 单元测试：`tests/`，运行 `pytest`（pyproject.toml 的 testpaths=["tests"]，所以裸 `pytest` 只跑单元测试；快速，无外部依赖）
 - 管道测试：`tests_pipeline/`，运行 `pytest tests_pipeline/`（模块间串联，mock 外部 API）
 - 集成测试：`tests_integration/`，运行 `pytest tests_integration/`（需真实 API token，无 token 自动跳过）
 
@@ -148,7 +154,7 @@
 - 输出：回测结果 DataFrame + 绩效指标 dict（schema 见 docs/data-schemas.md）
 - 职责：模拟交易、计算绩效
 
-### execution 模块
+### execution 模块（🔲 未实现，见 project-plan.md）
 - 输入：目标仓位 DataFrame
 - 输出：订单状态 DataFrame（schema 见 docs/data-schemas.md）
 - 职责：统一下单接口（模拟/实盘）
@@ -157,6 +163,22 @@
 - 输入：回测结果、持仓数据、因子数据
 - 输出：图表和报告
 - 职责：数据可视化（现阶段静态图）
+
+### config 模块
+- 职责：YAML 配置加载（`src/config/loader.py`：load_config / build_strategies / build_risk_engine / build_regime_switch）
+- 配置文件在 `configs/`（default.yaml、production.yaml、csi500.yaml、full_market.yaml 等）
+
+### context 模块（市场感知层，先于策略执行）
+- regime.py：detect_regime → trend_up/trend_down/range/volatile
+- regime_switch.py：RegimeSwitchStrategy 按 regime 路由子策略
+- param_router.py：per-regime 参数路由（rebalance/top_n）
+- stock_selector.py：因子质量评估 → 动态股票池
+- 只做路由/筛选，不含信号生成逻辑（信号归 strategies 层）
+
+### analysis 模块（诊断工具，不接入主管道）
+- param_sweep.py：参数网格扫描
+- pipeline_diagnostics.py：管道诊断
+- pool_matrix.py：策略×行业交叉回测
 
 ### 数据流
 ```

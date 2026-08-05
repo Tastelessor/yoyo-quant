@@ -119,5 +119,21 @@ def _register_defaults() -> None:
     register_factor("calc_earnings_surprise", calc_earnings_surprise, tags=["fundamental", "earnings"])
     register_factor("calc_earnings_acceleration", calc_earnings_acceleration, tags=["fundamental", "earnings"])
 
+    from src.factors.value import calc_bp, calc_ep
+
+    register_factor("calc_ep", calc_ep, tags=["fundamental", "value"])
+    register_factor("calc_bp", calc_bp, tags=["fundamental", "value"])
+
+    from src.factors.liquidity import calc_amihud, calc_turnover
+
+    register_factor("calc_amihud", calc_amihud, tags=["liquidity"])
+    register_factor("calc_turnover", calc_turnover, tags=["liquidity"])
+
+    from src.factors.quality import calc_cashflow_quality, calc_roe_level, calc_roe_stability
+
+    register_factor("calc_roe_level", calc_roe_level, tags=["fundamental", "quality"])
+    register_factor("calc_roe_stability", calc_roe_stability, tags=["fundamental", "quality"])
+    register_factor("calc_cashflow_quality", calc_cashflow_quality, tags=["fundamental", "quality"])
+
 
 _register_defaults()
