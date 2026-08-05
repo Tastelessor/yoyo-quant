@@ -25,6 +25,7 @@ from src.data.fetcher import (
 )
 from src.data.filters import detect_limit_price, detect_suspension
 from src.data.fundamentals_quarterly import build_quality_panel, fetch_fina_batch
+from src.data.trade_calendar import fetch_trade_dates
 from src.strategies.registry import get_strategy
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -41,7 +42,7 @@ def build_data_panel(codes, start, end, raw_dir):
 
     # Fetch fundamentals (PE, PB, total_mv) — per-date
     print("Fetching fundamentals...")
-    trade_dates = sorted(data["date"].unique())
+    trade_dates = list(fetch_trade_dates(START_DATE, END_DATE))
     fund_frames = []
     for d in trade_dates:
         d_str = pd.Timestamp(d).strftime("%Y-%m-%d")

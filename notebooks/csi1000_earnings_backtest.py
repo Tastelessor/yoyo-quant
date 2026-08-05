@@ -21,6 +21,7 @@ from src.data import validate_ohlcv
 from src.data.earnings import build_earnings_panel, fetch_earnings_history
 from src.data.fetcher import fetch_daily_batch, fetch_index_constituents
 from src.data.filters import detect_limit_price, detect_suspension
+from src.data.trade_calendar import fetch_trade_dates
 from src.strategies.combiner import WeightedVoteCombiner
 from src.strategies.registry import get_strategy
 
@@ -109,7 +110,7 @@ print(f"  {data['code'].nunique()} stocks, {data['date'].nunique()} days ({time.
 print("\n[3/4] Loading earnings data (cached)...", flush=True)
 t0 = time.time()
 earnings_raw = fetch_earnings_history(codes, sleep_sec=0, progress=False)
-trade_dates = pd.DatetimeIndex(sorted(data["date"].unique()))
+trade_dates = fetch_trade_dates(START_DATE, END_DATE)
 all_codes = sorted(data["code"].unique())
 earnings_panel = build_earnings_panel(earnings_raw, trade_dates, all_codes)
 data = data.merge(earnings_panel, on=["date", "code"], how="left")

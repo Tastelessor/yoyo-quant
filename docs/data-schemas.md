@@ -15,6 +15,32 @@
 | limit_down | bool | 跌停标记（由 data.filters.detect_limit_price 标注） |
 | is_suspended | bool | 停牌标记（由 data.filters.detect_suspension 标注） |
 
+## 交易日历 — data 模块输出
+
+> 权威交易日历接口（`src/data/trade_calendar.py`），数据源为 tushare `trade_cal`
+> （沪深交易所官方日历）。PIT 面板（`build_earnings_panel` / `build_quality_panel`）
+> 与回测的 trade_dates 网格必须来自本接口，**不得**用行情 `data["date"].unique()` 推断——
+> 停牌日/节假日缺失会导致网格错位。
+> 缓存：`data/raw/trade_cal/{exchange}.parquet`，一次全量拉取 [1990-01-01, 2030-12-31]。
+
+### fetch_trade_calendar 输出
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| exchange | str | 交易所代码（SSE/SZSE/CSSE），沪深 A 股用 SSE（与 SZSE 节假日一致） |
+| cal_date | datetime64 | 日历日期（升序、无重复） |
+| is_open | int | 1=开市, 0=闭市（周末/节假日） |
+| pretrade_date | str | 上一交易日，格式 YYYYMMDD |
+
+### 接口
+
+| 函数 | 返回 | 说明 |
+|------|------|------|
+| `fetch_trade_dates(start, end, exchange="SSE")` | pd.DatetimeIndex | [start, end] 闭区间内交易日（is_open=1），升序无重复；区间无交易日返回空 |
+| `is_trading_day(date, exchange="SSE")` | bool | 单日是否开市；周末/节假日/不在日历中返回 False |
+
+无 `TUSHARE_TOKEN` 时抛 ValueError（与 data 模块其余 fetch 函数一致）。
+
 ## 因子数据 — factors 模块输出
 
 > 每个因子函数（如 `calc_hv`）返回 `pd.Series`，由调用方组装成下表的 DataFrame。

@@ -20,6 +20,7 @@ from src.data import validate_ohlcv
 from src.data.earnings import build_earnings_panel, fetch_earnings_history
 from src.data.fetcher import fetch_daily_batch
 from src.data.filters import detect_limit_price, detect_suspension
+from src.data.trade_calendar import fetch_trade_dates
 from src.data.universe import resolve_universe
 from src.strategies.combiner import WeightedVoteCombiner
 from src.strategies.registry import get_strategy
@@ -100,7 +101,7 @@ print(f"  {len(earnings_raw)} events fetched ({time.time()-t0:.1f}s)")
 # Step 3: Build earnings panel and merge
 print("\n[3/4] Building earnings panel (PIT + Z-Score)...", flush=True)
 t0 = time.time()
-trade_dates = pd.DatetimeIndex(sorted(data["date"].unique()))
+trade_dates = fetch_trade_dates(START_DATE, END_DATE)
 all_codes = sorted(data["code"].unique())
 earnings_panel = build_earnings_panel(earnings_raw, trade_dates, all_codes)
 print(f"  Panel: {len(earnings_panel)} rows ({time.time()-t0:.1f}s)")

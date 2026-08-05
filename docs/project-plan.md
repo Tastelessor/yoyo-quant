@@ -51,6 +51,7 @@
 | backtest (lightweight engine) | ✅ 完成 | engine.py: SL/TP/ATR + TradingCost(佣金/印花税/过户费/滑点) + 39 tests |
 | backtest (walk-forward) | ✅ 完成 | walk_forward.py: 资金链式传递 + compute_overall_metrics + 22 tests |
 | backtest (连续回测) | ✅ 完成 | continuous.py: 单次通过无 train/test 切分 + 9 tests |
+| backtest (统一管道) | ✅ 完成 | pipeline.py: build_positions/run_backtest/run_pipeline 收敛 walk_forward/continuous/param_sweep/pool_matrix 4 处重复管道 + 17 tests |
 | visualization | ✅ 完成 | charts.py + 9 tests |
 | analysis (参数扫描) | ✅ 完成 | param_sweep.py + plot.py + 18 tests |
 | analysis (管道诊断) | ✅ 完成 | pipeline_diagnostics.py + 7 tests |
@@ -68,6 +69,7 @@
 | factors (价值) | ✅ 完成 | value.py: calc_ep(EP=1/PE) + calc_bp(BP=1/PB) + 17 tests |
 | factors (流动性) | ✅ 完成 | liquidity.py: calc_amihud + calc_turnover + 13 tests |
 | data (季度财务) | ✅ 完成 | fundamentals_quarterly.py: fina_indicator PIT 面板 + 7 tests |
+| data (交易日历) | ✅ 完成 | trade_calendar.py: 权威交易日历（tushare trade_cal + parquet 缓存）+ 19 tests |
 | factors (质量) | ✅ 完成 | quality.py: roe_level + roe_stability + cashflow_quality + 10 tests |
 | strategies (基本面组合) | ✅ 完成 | fundamental_diversified.py: 3 因子 IR 加权（评估后从 9 个候选中筛选）+ YAML 配置 |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
@@ -78,7 +80,7 @@
 | risk (止盈规则) | ✅ 重构 | 已迁移到 BacktestEngine（与止损统一管理） |
 | execution | 🔲 未开始 | 统一下单接口 |
 
-**测试总计**：854 tests（62 个测试文件）
+**测试总计**：916 tests（单元 890 + 管道 26，63 个测试文件；集成测试因 TUSHARE_TOKEN 过期跳过/失败，见 history.md）
 
 ## 目录结构
 
@@ -139,6 +141,7 @@ src/
 │       ├── vwap_gtja.py
 │       └── trend_gtja.py
 ├── backtest/
+│   ├── pipeline.py               # 统一管道编排（build_positions/run_backtest/run_pipeline）
 ├── portfolio/
 │   ├── allocator.py               # equal_weight + exposure scaling
 │   ├── circuit_breaker.py         # DrawdownCircuitBreaker: 回撤断路器

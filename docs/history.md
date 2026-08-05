@@ -1191,3 +1191,79 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 - **文档修正**：策略 docstring / project-plan / 本文件此前写"7 因子"，实际候选池 9 个因子、评估后仅保留 3 个（earnings_surprise/amihud/roe_stability）；`evaluate_new_factors.py` 的 "Combined (7 factors)" 实验标签修正为实际组合
 - **清理**：`src/factors/__init__.py` 的 `__all__` 中 `calc_amihud` 重复项删除
 - 全量 **854 tests 通过**（62 个测试文件）
+
+---
+
+## Phase 18: 统一管道编排（P0-02）✅ 完成
+
+### 目标
+消除 4 处手写重复的回测管道，收敛为单一编排入口，消除"改一处契约需同步 4 处"的维护隐患。
+
+### 现状（修复前）
+`signal → filter_tradable → enforce_t1 → equal_weight → position_limit → BacktestEngine` 在 4 处各手写一遍：
+- `src/backtest/walk_forward.py`（主链 + `_run_silo_pipeline`）
+- `src/backtest/continuous.py`
+- `src/analysis/param_sweep.py` `_run_single`
+- `src/analysis/pool_matrix.py` `run_matrix`
+
+各入口能力不一致：smoother/industry_cap/止损/成本/断路器仅 walk_forward/continuous 支持；param_sweep/pool_matrix 的 prices 构造不 `drop_duplicates`。
+
+### 变更
+- 新增 `src/backtest/pipeline.py`，三个公开函数：
+  - `build_positions(signals, data, capital, ...)`：filter → enforce_t1 → [rebalance 稀疏化] → equal_weight → [smoother]，返回 `(positions, prices)`。silo 管道复用（不做 cap/limit，保持原行为）。
+  - `run_backtest(positions, prices, data, ...)`：positions → BacktestEngine 结果（trades/equity_curve/metrics）。multi_silo 合并后段复用。
+  - `run_pipeline(signals, data, capital, ...)`：完整链 + industry_cap + position_limit，返回 `{positions, carry_positions, prices, trades, equity_curve, metrics}`。walk_forward/continuous/param_sweep/pool_matrix 复用。
+- **行为对齐**（用户确认）：param_sweep/pool_matrix 对齐到完整版——prices 统一 `drop_duplicates`；引擎统一支持止损/止盈/成本/断路器/exposure/smoother/industry_cap（默认关闭，默认参数下结果不变）。
+- **carry_positions 语义**：cap/limit 前的中间态（equal_weight/smoother 输出），用于 walk-forward 跨期 smoother 冷启动，保持原 `prev_positions` 行为（原代码在 industry_cap 之前 copy）。
+- `build_positions` 支持 `market_data` 透传：跨期 smoother 需从全量数据（含上一期日期）查 prev-day prices，walk_forward 与 silo 均传入完整 `data`。
+
+### 测试
+- 新增 `tests/backtest/test_pipeline.py`（17 tests）：正常路径 / 涨停过滤 / exposure / rebalance 稀疏化 / 跨期冷启动（resurrected 股票经死区保留）/ 与手工链等价性 / industry cap / position limit / 空信号边界 / 缺列报错
+- 全量 **897 tests 通过**（854 单元 + 26 管道 + 17 新增），ruff check + format 通过
+- 修复过程中顺带修正 param_sweep.py 既有 lint 问题（UP035/E402/E501）
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-06 | 统一入口放 `src/backtest/pipeline.py` | 管道产出回测结果，放 backtest 层最自然，analysis 反向依赖 backtest 已有先例 |
+| 2026-06 | 三个公开函数而非一个 | silo 需要「信号→仓位」前半段（不含 cap/limit），必须能拆出 |
+| 2026-06 | param_sweep/pool_matrix 对齐到完整管道 | 默认参数下结果不变；统一后可获得完整能力（止损/成本/断路器/exposure） |
+| 2026-06 | multi_silo 合并后段保留 cap/limit 两行 API 调用 | 输入已是合并后 positions，无法走 run_pipeline（其输入为 signals）；engine 段已收敛到 run_backtest |
+
+---
+
+## Phase 19: 权威交易日历（P1-01）✅ 完成
+
+### 目标
+消除"全 src 无交易日历实现"：数据层提供权威交易日历接口，PIT 面板按真实交易日对齐，停牌日不再产生错误网格。
+
+### 现状（修复前）
+- 全 src grep `trade_cal|trade_calendar|is_open` 零命中；`build_earnings_panel`（earnings.py:374）与 `build_quality_panel`（fundamentals_quarterly.py:164）的 `trade_dates` 均由调用方传入。
+- 所有 notebook 用 `data["date"].unique()` 从行情推断交易日（如 `strategy_quality_diagnostic.py:100`）。停牌日/节假日缺失 → PIT 面板网格错位。
+
+### 变更
+- 新增 `src/data/trade_calendar.py`，三个公开接口（tushare `trade_cal` 为数据源，parquet 缓存于 `data/raw/trade_cal/{exchange}.parquet`，按年分片拉取 [1990-01-01, 2030-12-31] 规避单次行数限制）：
+  - `fetch_trade_calendar(exchange="SSE", cache_dir=None)` → DataFrame（exchange, cal_date, is_open, pretrade_date；cal_date 升序无重复；缓存命中校验必需列，缺列抛错；起始日偏晚打 warning）
+  - `fetch_trade_dates(start, end, exchange="SSE", cache_dir=None)` → pd.DatetimeIndex（仅 is_open=1，闭区间，升序无重复；start/end 支持 tz-aware 自动归一化）
+  - `is_trading_day(date, exchange="SSE", cache_dir=None)` → bool（周末/节假日/不在日历中返回 False）
+- `src/data/__init__.py` 导出 `TRADE_CAL_SCHEMA` / `fetch_trade_calendar` / `fetch_trade_dates` / `is_trading_day`。
+- 迁移 9 个 PIT 面板消费方（notebooks）：`strategy_quality_diagnostic` / `csi500_continuous_backtest` / `phase15_grid_search` / `csi500_earnings_backtest` / `csi1000_earnings_backtest` / `phase16_backtest` / `rebalance_frequency_sweep` / `phase15_backtest` 的 `trade_dates = pd.DatetimeIndex(sorted(data["date"].unique()))` 改为 `fetch_trade_dates(START_DATE, END_DATE)`；`evaluate_new_factors` 的 `trade_dates`（同时驱动逐日 fundamentals 拉取）改为 `list(fetch_trade_dates(START_DATE, END_DATE))`。
+- **范围确认（用户拍板）**：回测引擎（engine.py）与 walk-forward/continuous 的日期切分逻辑保持现状（仍以实际行情日期为准），不动"最稳定组件"；Notebooks 中仅统计用途的 `date.unique()` 打印保留。
+- **Review 加固**：单次全量拉取改按年分片（41 次请求）——规避 tushare 单次行数限制导致残缺日历被静默永久缓存的隐患；缓存命中校验 schema 列 + 起始日覆盖软校验；`is_trading_day`/`fetch_trade_dates` 对 tz-aware 输入归一化。
+
+### 测试
+- 新增 `tests/data/test_trade_calendar.py`（19 tests）：schema/dtype/升序去重 / 缓存命中不重复调 API / 按年分片参数透传 / 缓存 dtype 契约（读回 datetime64+int）/ 坏缓存缺列报错 / 缺 token 报错 / 空返回不写缓存 / 只返回 is_open=1 / 闭区间截取 / 区间无交易日 / start>end 空 / 无参全量 / tz-aware 边界 / is_trading_day / tz-aware 判断 / 空日历返回 False / **PIT 网格对齐**（节假日+周末不出现在 build_earnings_panel 网格——P1-01 核心修复验证）。
+- 单元 890（+19）+ 管道 26 = 916 tests 通过；`ruff check src/` 无新增问题（存量 65 个 lint 错误未触碰，遵循最小改动原则）；`ruff format --check` 通过。
+
+### 决策记录
+
+| 日期 | 决策 | 原因 |
+|------|------|------|
+| 2026-06 | 数据源用 tushare `trade_cal` + parquet 缓存 | 与项目数据栈/缓存/测试模式一致，覆盖未来日期；用户拍板（备选 exchange_calendars 离线库未选） |
+| 2026-06 | 接入范围=日历接口 + PIT 面板消费方 | 用户拍板最小范围；回测引擎为"最稳定组件"不动，回测结果零变化 |
+| 2026-06 | 按年分片拉取并缓存 [1990-2030] 全量 | 交易日历为静态低频数据，全量缓存免增量逻辑；按年分片规避 tushare 单次行数限制导致的静默截断（review 加固）；覆盖历史回测与"今天是否交易日"判断 |
+| 2026-06 | 沪深取 SSE 交易所 | 项目已排除北交所，沪深节假日一致；exchange 参数保留扩展性 |
+
+### 已知环境问题
+- `TUSHARE_TOKEN` 当前已过期（tushare 返回 "token已过期"）：`tests_integration/` 8 个用例失败，与本 Phase 无关（未改动任何 tushare 调用路径）；token 恢复后即可运行。`fetch_trade_calendar` 的真实数据验证同样依赖 token 恢复。
