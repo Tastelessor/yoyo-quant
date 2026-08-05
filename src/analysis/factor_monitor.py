@@ -175,7 +175,7 @@ def save_changes(df: pd.DataFrame, path: str | Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _diff_states(new_df: pd.DataFrame, old_state: pd.DataFrame) -> pd.DataFrame:
+def diff_states(new_df: pd.DataFrame, old_state: pd.DataFrame) -> pd.DataFrame:
     """新行与旧 state 同键比较，返回状态发生切换的行（old_state → new_state）。"""
     if old_state is None or old_state.empty:
         return pd.DataFrame(columns=CHANGE_COLS)
@@ -379,7 +379,7 @@ def run_monitor(
         else pd.DataFrame(columns=STATE_COLS)
     )
     save_state(new_df, state_path)
-    changes = _diff_states(new_df, old_state)
+    changes = diff_states(new_df, old_state)
     if not changes.empty:
         save_changes(changes, changes_path)
     return load_state(state_path)

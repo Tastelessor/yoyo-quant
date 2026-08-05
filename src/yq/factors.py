@@ -7,9 +7,16 @@ from pathlib import Path
 import pandas as pd
 import typer
 
+from analysis.factor_monitor import (
+    DEFAULT_OUTPUT_DIR,
+    diff_states,
+    load_state,
+    run_monitor,
+)
 from data.storage import load_parquet, save_parquet
 from factors.evaluation import DEFAULT_WINDOWS, evaluate_factors
 from factors.registry import get_spec, list_factors, run_factor
+from yq.monitor import build_status_table, render_changes
 from yq.output import _records, render_dataframe
 
 factor_app = typer.Typer(
@@ -124,7 +131,9 @@ def factor_run(
             if json_out:
                 typer.echo(json.dumps({"output": str(output), "rows": len(result)}))
             else:
-                typer.echo(f"已写入 {output}（{len(result)} 行 × {result.shape[1]} 列）")
+                typer.echo(
+                    f"已写入 {output}（{len(result)} 行 × {result.shape[1]} 列）"
+                )
         else:
             typer.echo(render_dataframe(result, as_json=json_out))
     except (ValueError, KeyError, FileNotFoundError) as exc:
@@ -193,6 +202,97 @@ def factor_evaluate(
             typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         else:
             typer.echo(render_dataframe(summary, as_json=False))
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        typer.echo(f"错误: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+
+@factor_app.command("monitor")
+def factor_monitor(
+    data: Path = typer.Option(
+        ...,
+        "--data",
+        help="行情 parquet（date/code/close，可选 limit_up/limit_down/is_suspended）",
+    ),
+    factor: list[str] | None = typer.Option(
+        None, "--factor", "-f", help="因子名，可重复；缺省动态发现全部 single 因子"
+    ),
+    windows: str = typer.Option(
+        "5", "--windows", help="forward 收益窗口（交易日数），逗号分隔，如 1,5,20"
+    ),
+    window: int = typer.Option(
+        60, "--window", help="滚动 IC/IR/t 统计窗口（交易日数）"
+    ),
+    min_sustain: int = typer.Option(
+        20, "--min-sustain", help="状态切换最短持续日数（防抖）"
+    ),
+    min_obs: int = typer.Option(5, "--min-obs", help="单日截面 IC 最少样本数"),
+    t_active: float = typer.Option(2.0, "--t-active", help="活跃阈值 |t|"),
+    t_decay: float = typer.Option(1.0, "--t-decay", help="失效阈值 |t|"),
+    ir_active_line: float = typer.Option(
+        0.7, "--ir-active-line", help="滚动 IR 活跃参考线（绘图用）"
+    ),
+    ir_dead_line: float = typer.Option(
+        0.3, "--ir-dead-line", help="滚动 IR 失效参考线（绘图用）"
+    ),
+    full: bool = typer.Option(False, "--full", help="全量重算（忽略增量历史）"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="禁用因子磁盘缓存"),
+    output_dir: Path = typer.Option(
+        DEFAULT_OUTPUT_DIR, "--output-dir", help="state/changes 输出目录"
+    ),
+    json_out: bool = typer.Option(False, "--json", help="输出 JSON"),
+) -> None:
+    """因子生命周期监控：滚动 IC/IR/t → active/decaying/dead 状态 → 持久化。
+
+    首次运行全量计算；之后默认只重算尾部（见 state.parquet 的 last_date）。
+    输出状态摘要表（每 factor×fwd_window 一行，dead 置顶）与本次状态切换。
+    """
+    try:
+        price_df = load_parquet(data)
+        fwd_windows = tuple(int(x) for x in windows.split(",") if x.strip())
+        if not fwd_windows:
+            raise ValueError("--windows 需为逗号分隔的正整数")
+        old_state = load_state(Path(output_dir) / "state.parquet")
+        state = run_monitor(
+            price_df,
+            factor_names=factor,
+            fwd_windows=fwd_windows,
+            window=window,
+            min_sustain=min_sustain,
+            min_obs=min_obs,
+            t_active=t_active,
+            t_decay=t_decay,
+            exclude_untradable=True,
+            output_dir=output_dir,
+            full=full,
+            use_cache=not no_cache,
+        )
+        changes = diff_states(state, old_state)
+        status = build_status_table(state)
+        config = {
+            "windows": list(fwd_windows),
+            "window": window,
+            "min_sustain": min_sustain,
+            "min_obs": min_obs,
+            "t_active": t_active,
+            "t_decay": t_decay,
+            "ir_active_line": ir_active_line,
+            "ir_dead_line": ir_dead_line,
+            "full": full,
+            "exclude_untradable": True,
+        }
+        if json_out:
+            payload = {
+                "status": _records(status),
+                "changes": _records(changes),
+                "config": config,
+            }
+            typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            typer.echo(render_dataframe(status, as_json=False))
+            typer.echo("")
+            typer.echo(render_changes(changes))
+            typer.echo(f"state 已写入 {Path(output_dir) / 'state.parquet'}")
     except (ValueError, KeyError, FileNotFoundError) as exc:
         typer.echo(f"错误: {exc}", err=True)
         raise typer.Exit(code=1) from exc
