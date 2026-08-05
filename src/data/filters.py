@@ -81,12 +81,15 @@ def detect_suspension(
     1. 现有行中 ``volume == 0`` 标为停牌（保留旧规则）；
     2. 按交易日网格补齐缺失交易日：tushare ``daily`` 对停牌日无记录，
        只有补齐行才能让下游（filter_tradable 等）看到停牌。补齐行的
-       OHLCV / pre_close 为 NaN，is_suspended=True；已存在的
+       OHLCV / pre_close 为 NaN、volume 为 0（保持 volume==0 规则幂等，
+       二次运行仍被识别为停牌），is_suspended=True；已存在的
        limit_up / limit_down 列在补齐行上填 False。
 
     每只股票只在首行日期（上市日/拉取起点）之后补齐，之前不补。
-    上界不做裁剪：股票池来自 ``fetch_all_stocks``（当前上市股票），
-    停牌至今的股票缺失日应一直补到网格上界。
+    网格上界裁剪到数据实际最大日期：调用方可能传自然日/未来日期的
+    交易日序列（如 ``fetch_full_market`` 的 END=今天），行情未覆盖到
+    网格上界时，不裁剪会把全市场最后若干交易日误标为停牌；停牌至今的
+    股票缺失日仍会补到全市场最新数据日。
 
     Parameters
     ----------
@@ -124,23 +127,25 @@ def detect_suspension(
     # （如 fetch_full_market 的 END=今天），行情数据未覆盖到网格上界时，
     # 不裁剪会把全市场最后若干交易日误标为停牌。
     grid_hi = min(grid_index.max(), df["date"].max())
-    filled: list[pd.DataFrame] = []
-    for code, grp in df.groupby("code"):
-        present = set(grp["date"])
-        lo = grp["date"].min()
-        missing = [d for d in grid_index if lo <= d <= grid_hi and d not in present]
-        if missing:
-            fill = pd.DataFrame({"date": missing, "code": code})
-            for col in ("open", "high", "low", "close", "volume", "pre_close"):
-                if col in df.columns:
-                    fill[col] = np.nan
-            fill["is_suspended"] = True
-            for col in ("limit_up", "limit_down"):
-                if col in df.columns:
-                    fill[col] = False
-            filled.append(fill)
 
-    if filled:
-        df = pd.concat([df, *filled], ignore_index=True)
+    # MultiIndex 一次性网格化补齐（全市场量级下避免逐股票 Python 循环 + concat）：
+    # 每只股票 × 全部交易日展开，缺失格即为停牌补齐行。
+    # 输入 (code, date) 应唯一（同一股票同一天只有一条行情），重复行防御性去重。
+    unique = df.drop_duplicates(subset=["code", "date"])
+    full_grid = pd.MultiIndex.from_product(
+        [unique["code"].unique(), grid_index], names=["code", "date"]
+    )
+    result = unique.set_index(["code", "date"]).reindex(full_grid).reset_index()
+    # 每只股票首行日期（上市日/拉取起点）之前不补
+    lo_map = unique.groupby("code")["date"].min()
+    result = result[result["date"] >= result["code"].map(lo_map)]
+    result = result[result["date"] <= grid_hi]
+    # 补齐行（reindex 产生的 NaN 行）：volume 填 0 保持 volume==0 规则幂等
+    # （二次运行仍能被识别为停牌）；is_suspended 填 True；limit 列填 False
+    result["is_suspended"] = result["is_suspended"].fillna(True)
+    result["volume"] = result["volume"].fillna(0.0)
+    for col in ("limit_up", "limit_down"):
+        if col in result.columns:
+            result[col] = result[col].fillna(False)
 
-    return df.sort_values(["code", "date"]).reset_index(drop=True)
+    return result.sort_values(["code", "date"]).reset_index(drop=True)

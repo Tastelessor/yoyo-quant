@@ -323,6 +323,29 @@ def test_suspension_does_not_fill_after_last_data_date():
     assert pd.Timestamp("2024-01-05") not in set(result["date"])
 
 
+def test_suspension_idempotent():
+    """对已清洗结果再次运行 detect_suspension，补齐行仍为 is_suspended=True。
+
+    补齐行 volume 须为 0（而非 NaN），volume==0 规则才能保持幂等。
+    """
+    dates = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"])
+    df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-02", "2024-01-04"]),  # 缺 01-03
+            "code": ["A"] * 2,
+            "close": [1.0, 1.1],
+            "volume": [100.0, 100.0],
+        }
+    )
+    once = detect_suspension(df, trade_dates=dates)
+    twice = detect_suspension(once, trade_dates=dates)
+    assert len(once) == len(twice) == 3
+    row = twice[twice["date"] == pd.Timestamp("2024-01-03")]
+    assert len(row) == 1
+    assert bool(row["is_suspended"].iloc[0])
+    assert row["volume"].iloc[0] == 0
+
+
 def test_suspension_preserves_existing_limit_flags_on_filled_rows():
     """先 detect_limit_price 再 detect_suspension 时，补齐行的 limit 列应为 False。"""
     dates = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"])
