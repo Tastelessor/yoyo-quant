@@ -142,10 +142,15 @@ def detect_suspension(
     result = result[result["date"] <= grid_hi]
     # 补齐行（reindex 产生的 NaN 行）：volume 填 0 保持 volume==0 规则幂等
     # （二次运行仍能被识别为停牌）；is_suspended 填 True；limit 列填 False
-    result["is_suspended"] = result["is_suspended"].fillna(True)
+    # 补齐行（reindex 产生的 NaN 行）：volume 填 0 保持 volume==0 规则幂等
+    # （二次运行仍能被识别为停牌）；is_suspended 填 True；limit 列填 False。
+    # 先转 nullable boolean 再 fillna，避免 object dtype downcast 警告。
+    result["is_suspended"] = (
+        result["is_suspended"].astype("boolean").fillna(True).astype(bool)
+    )
     result["volume"] = result["volume"].fillna(0.0)
     for col in ("limit_up", "limit_down"):
         if col in result.columns:
-            result[col] = result[col].fillna(False)
+            result[col] = result[col].astype("boolean").fillna(False).astype(bool)
 
     return result.sort_values(["code", "date"]).reset_index(drop=True)
