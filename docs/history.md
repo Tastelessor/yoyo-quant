@@ -1495,3 +1495,16 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 - 全量单测 **1053 passed**（+滚动 12 + monitor 16 + plot 11 + CLI monitor 9 等），ruff 干净（既有 test_earnings/test_storage E501 未动）
 - commits：`02af806`(北交所)→`71ef66a`(涨跌停精度)→`7d158ae`(停牌上界)→`a656ac0`(限频)→`1a04a43`(密钥)→`4717d07`(幂等)→`ee803b9`(downcast)→`654b3de`(清洗管道)→`afba929`(fetch 脚本)→`62d993d`(文档)→`cefc7e8`(print 格式)→ Task1..4 逐步提交，本 Phase 收尾 `8180aa4`
 - 剩余：Task 6 全量首跑（88 single 因子）+ 阈值校准（未开始）
+
+### Task 6：全量首跑 + 阈值校准（2026-08-05，补充）
+- **命令**：`yq factor monitor --data data/clean/full_market_ohlcv.parquet --full --output-dir data/audit/factor_monitor_full`
+- **结果**：80 个量价因子 × fwd=5 × window=60，state 长表 56,822 行（2023-08-07 → 2026-07-29）；跳过 8 个缺列因子（fundamental 透传：earnings_surprise/acceleration/ep/bp/roe_level/roe_stability/cashflow_quality + turnover 缺 total_mv；amihud 用 volume 代理可算，未跳过）
+- **运行发现并修复**：`calc_earnings_surprise` 等透传因子直接读 df 同名列 → KeyError 中断整批；`run_monitor` 改为循环内捕获 KeyError 跳过并返回 `(state, skipped)`，CLI stderr 汇总提示（TDD +1 测试）
+- **最新状态分布**（2026-07-29）：dead 60 / reverse 7 / decaying 5 / **active 8**——active 全为 GTJA 量价相关类：calc_close_vol_rank_cov_5d(gtja_99, t=+4.49, sustain 613 天)、calc_high_vol_rank_corr_3d(gtja_32, t=+4.10)、calc_vwap_vol_rank_corr_5d(gtja_90, t=+4.00)、calc_vol_rank_intraday_corr_6d(gtja_1, t=+1.84)
+- **阈值校准结论**：
+  - t 判定线（±2 活跃 / ±1 失效）**有效**：最新 |t|>2 占 45%、|t|<1 占 37.5%，区分度良好
+  - IR 参考线 0.7/0.3 **维持默认**（仅绘图）：最新全因子 |IR|<0.7（max 0.579，0 个达到 0.7）、|IR|<0.3 占 60%——印证设计预判（IR×√window≈t，IR 线区分度差），不做判定线
+  - 全历史状态占比：reverse 47.3% / dead 34.3% / active 17.3% / decaying 1.2%；全历史 t 中位数 -1.93、IR 中位数 -0.25——近 3 年全市场量价因子整体偏反向（散户主导市场的常见特征）
+  - **默认阈值保持不变**：--t-active 2.0 / --t-decay 1.0 / --ir-active-line 0.7 / --ir-dead-line 0.3
+- **产出**：`data/audit/factor_monitor_full/state.parquet`（1.35MB）+ `figures/`（heatmap + 80 张 lifecycle PNG）
+- 全量单测 **1054 passed**，ruff 干净
