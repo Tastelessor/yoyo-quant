@@ -120,9 +120,11 @@ def detect_suspension(
 
         grid_dates = sorted({_to_naive(d) for d in trade_dates})
     grid_index = pd.DatetimeIndex(grid_dates)
-
+    # 上界裁剪到数据实际最大日期：调用方可能传自然日/未来日期的交易日网格
+    # （如 fetch_full_market 的 END=今天），行情数据未覆盖到网格上界时，
+    # 不裁剪会把全市场最后若干交易日误标为停牌。
+    grid_hi = min(grid_index.max(), df["date"].max())
     filled: list[pd.DataFrame] = []
-    grid_hi = grid_index.max()
     for code, grp in df.groupby("code"):
         present = set(grp["date"])
         lo = grp["date"].min()

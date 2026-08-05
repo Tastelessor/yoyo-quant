@@ -299,19 +299,43 @@ def test_suspension_infers_grid_from_data_when_trade_dates_none():
     assert bool(row["is_suspended"].iloc[0])
 
 
+def test_suspension_does_not_fill_after_last_data_date():
+    """行情最大日期之后的交易日不应补齐为停牌（网格上界裁剪）。
+
+    调用方可能传入自然日/未来日期的交易日网格（如 fetch_full_market 的
+    END=今天），行情数据尚未覆盖到网格上界；不裁剪会把全市场最后
+    若干交易日误标为停牌。
+    """
+    df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-02", "2024-01-04"]),  # 缺 01-03（停牌）
+            "code": ["A"] * 2,
+            "close": [1.0, 1.1],
+            "volume": [100.0, 100.0],
+        }
+    )
+    trade_dates = pd.to_datetime(
+        ["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"]
+    )
+    result = detect_suspension(df, trade_dates=trade_dates)
+    # 01-03 在数据范围内 → 补齐；01-05 超出数据上界 → 不补
+    assert pd.Timestamp("2024-01-03") in set(result["date"])
+    assert pd.Timestamp("2024-01-05") not in set(result["date"])
+
+
 def test_suspension_preserves_existing_limit_flags_on_filled_rows():
     """先 detect_limit_price 再 detect_suspension 时，补齐行的 limit 列应为 False。"""
-    dates = pd.to_datetime(["2024-01-02", "2024-01-03"])
+    dates = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"])
     df = pd.DataFrame(
         {
             "date": dates,
-            "code": ["A"] * 2,
-            "close": [10.0, 10.5],
-            "volume": [100.0, 100.0],
-            "pre_close": [10.0, 10.0],
+            "code": ["A"] * 3,
+            "close": [10.0, 10.0, 10.5],
+            "volume": [100.0, 100.0, 100.0],
+            "pre_close": [10.0, 10.0, 10.0],
         }
     )
-    df = df[df["date"] != pd.Timestamp("2024-01-03")]
+    df = df[df["date"] != pd.Timestamp("2024-01-03")]  # 缺中间日 01-03
     df = detect_limit_price(df)
     result = detect_suspension(df, trade_dates=dates)
     row = result[result["date"] == pd.Timestamp("2024-01-03")]
