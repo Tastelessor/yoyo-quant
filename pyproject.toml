@@ -18,6 +18,7 @@ dependencies = [
     "pyarrow>=14.0",
     "pyyaml>=6.0",
     "statsmodels>=0.14",
+    "typer>=0.12",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +27,9 @@ dev = [
     "ruff>=0.1",
     "mypy>=1.0",
 ]
+
+[project.scripts]
+yq = "yq.cli:app"
 
 [tool.setuptools.package-dir]
 "" = "src"
