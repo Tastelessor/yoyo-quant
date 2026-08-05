@@ -50,7 +50,16 @@ def fetch_daily(code: str, start: str, end: str) -> pd.DataFrame:
 
     # Retry with backoff on rate limit / transient proxy failures
     raw = None
-    retryable = ("过快", "频率", "unavailable", "timeout", "timed out")
+    retryable = (
+        "过快",
+        "频率",
+        "每分钟",
+        "最多访问",
+        "访问次数",
+        "unavailable",
+        "timeout",
+        "timed out",
+    )
     for attempt in range(3):
         try:
             raw = api.daily(

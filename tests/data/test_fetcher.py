@@ -161,6 +161,23 @@ def test_fetch_daily_retries_on_temporary_unavailable(mock_api, fake_tushare_dat
     assert mock_sleep.call_count == 2
 
 
+def test_fetch_daily_retries_on_rate_limit_message(mock_api, fake_tushare_data):
+    """tushare 官方限频错误文本「每分钟最多访问该接口X次」应触发重试。"""
+    responses = [
+        Exception("抱歉，您每分钟最多访问该接口500次"),
+        fake_tushare_data,
+    ]
+    mock_api.daily.side_effect = responses
+    with (
+        patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
+        patch("data.fetcher.time.sleep") as mock_sleep,
+    ):
+        df = fetch_daily("000001", "2024-01-02", "2024-01-08")
+    assert len(df) == 5
+    assert mock_api.daily.call_count == 2
+    assert mock_sleep.call_count == 1
+
+
 def test_fetch_daily_does_not_retry_on_token_error(mock_api):
     """token 错误等确定性错误不应重试，直接抛出。"""
     mock_api.daily.side_effect = Exception("token不对")
