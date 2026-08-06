@@ -66,13 +66,6 @@ def test_moneyflow_big_net_ratio():
 
 
 def test_moneyflow_factors_registered():
-    # 防御性重建默认注册：test_factor_cache 的 autouse fixture 会清空全局
-    # FACTOR_REGISTRY 且不恢复（既有顺序污染），与 test_registry 的
-    # _ensure_defaults 同模式
-    from factors.registry import FACTOR_REGISTRY, _register_defaults
-
-    FACTOR_REGISTRY.clear()
-    _register_defaults()
     names = list_factors(kind="single")
     assert "calc_moneyflow_net_ratio" in names
     assert "calc_moneyflow_streak" in names

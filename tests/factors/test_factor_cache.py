@@ -49,9 +49,11 @@ def _counting_factor(calls: dict, rolling: bool = False) -> object:
 
 @pytest.fixture(autouse=True)
 def _clean_registry():
+    saved = dict(FACTOR_REGISTRY)
     FACTOR_REGISTRY.clear()
     yield
     FACTOR_REGISTRY.clear()
+    FACTOR_REGISTRY.update(saved)  # 恢复测试前状态，避免污染后续测试
 
 
 class TestFactorCache:
