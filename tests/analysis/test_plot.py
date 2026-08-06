@@ -206,3 +206,39 @@ def test_plot_bootstrap_null(tmp_path):
     assert len(ax.patches) == 2
     assert ax.get_ylabel() == "|train_t|"
     fig.savefig(tmp_path / "b.png")
+
+
+def test_plot_equity_compare_normalizes_and_labels():
+    import matplotlib
+    matplotlib.use("Agg")
+    import pandas as pd
+
+    from analysis.plot import plot_equity_compare
+
+    dates = pd.bdate_range("2024-01-01", periods=10)
+    curves = {
+        "synth": pd.DataFrame(
+            {
+                "date": dates,
+                "equity": [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9],
+            }
+        ),
+        "single": pd.DataFrame(
+            {
+                "date": dates,
+                "equity": [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],
+            }
+        ),
+    }
+    fig = plot_equity_compare(curves)
+    assert len(fig.axes) == 1
+    ax = fig.axes[0]
+    # 两条线，legend 两个标签
+    assert len(ax.lines) == 2
+    assert [t.get_text() for t in ax.get_legend().get_texts()] == ["synth", "single"]
+    # 归一化到初始 1.0
+    assert ax.lines[0].get_ydata()[0] == 1.0
+    assert ax.lines[1].get_ydata()[0] == 1.0
+    import matplotlib.pyplot as plt
+
+    plt.close(fig)

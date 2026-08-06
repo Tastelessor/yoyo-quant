@@ -428,3 +428,34 @@ def plot_bootstrap_null(
     ax.set_title("入选因子显著性 vs 随机基线（逐因子零分布）")
     fig.tight_layout()
     return fig
+
+
+def plot_equity_compare(
+    curves: dict[str, pd.DataFrame],
+) -> matplotlib.figure.Figure:
+    """多条净值曲线对比（归一化到初始 1.0）。
+
+    Parameters
+    ----------
+    curves : dict[str, DataFrame]
+        {策略名: (date, equity, ...)}。
+
+    Returns
+    -------
+    Figure
+        单轴图：x=日期，y=净值（初始=1.0），图例为策略名。
+    """
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for name, eq in curves.items():
+        if len(eq) == 0:
+            continue
+        norm = eq["equity"] / eq["equity"].iloc[0]
+        ax.plot(pd.to_datetime(eq["date"]), norm, label=name)
+    ax.set_xlabel("日期")
+    ax.set_ylabel("净值（初始 = 1.0）")
+    ax.set_title("合成信号 vs 单因子净值对比")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    return fig
