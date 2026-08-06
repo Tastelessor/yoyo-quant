@@ -38,6 +38,12 @@ FACTOR_CLEAN_DEFAULTS: dict = {
     "representative_by": "t_stat",
     "fwd_window": 5,
     "exclude_untradable": True,
+    # Phase B（walk-forward OOS）
+    "oos_train_months": 12,
+    "oos_test_months": 1,
+    "top_k": 5,
+    "bootstrap_iters": 200,
+    "t_window": 60,
 }
 
 
@@ -64,6 +70,11 @@ def load_factor_clean_config(path: Path) -> dict:
         raise ValueError(f"cluster_linkage 非法: {cfg['cluster_linkage']!r}")
     if cfg["representative_by"] not in {"t_stat", "ir", "combined"}:
         raise ValueError(f"representative_by 非法: {cfg['representative_by']!r}")
+    for key in (
+        "oos_train_months", "oos_test_months", "top_k", "bootstrap_iters", "t_window"
+    ):
+        if not isinstance(cfg[key], int) or cfg[key] < 1:
+            raise ValueError(f"{key} 必须为正整数，收到 {cfg[key]!r}")
     return cfg
 
 

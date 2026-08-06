@@ -5,3 +5,9 @@ cluster_linkage: ward      # 层次聚类连接方式
 representative_by: t_stat  # 簇代表选择标准：t_stat | ir | combined
 fwd_window: 5              # 取 state 中该 forward 窗口的统计行
 exclude_untradable: true   # 沿用监控默认：排除涨跌停/停牌日
+# Phase B walk-forward OOS（对应 Q2）
+oos_train_months: 12      # train 期长度（月）
+oos_test_months: 1        # test 期长度（月，贴合日频换仓节奏）
+top_k: 5                  # 每期从去冗余代表集中选入因子数上限
+bootstrap_iters: 200      # 零分布打乱次数（多重检验修正）
+t_window: 60              # 零分布尾部窗口（交易日，与 monitor 滚动 t 口径一致）

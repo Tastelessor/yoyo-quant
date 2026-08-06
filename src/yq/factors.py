@@ -14,6 +14,7 @@ from analysis.factor_monitor import (
     load_state,
     run_monitor,
 )
+from analysis.factor_oos import run_phase_b
 from config.loader import load_factor_clean_config
 from data.storage import load_parquet, save_parquet
 from factors.ops.evaluation import DEFAULT_WINDOWS, evaluate_factors
@@ -422,6 +423,105 @@ def factor_clean_a(
             )
         if out["skipped"]:
             typer.echo(f"跳过（缺列）: {out['skipped']}", err=True)
+        if output_dir is not None:
+            typer.echo(f"输出: {output_dir}")
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        typer.echo(f"错误: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+
+@factor_app.command("clean-b")
+def factor_clean_b(
+    state: Path = typer.Option(..., "--state", help="monitor 输出的 state.parquet"),
+    data: Path = typer.Option(..., "--data", help="全市场行情 parquet"),
+    config: Path | None = typer.Option(None, "--config", help="factor_clean.yaml"),
+    train_months: int | None = typer.Option(
+        None, "--train-months", help="train 期长度（月）"
+    ),
+    test_months: int | None = typer.Option(
+        None, "--test-months", help="test 期长度（月）"
+    ),
+    top_k: int | None = typer.Option(None, "--top-k", help="每期入选因子数上限"),
+    bootstrap_iters: int | None = typer.Option(
+        None, "--bootstrap-iters", help="零分布打乱次数"
+    ),
+    t_window: int | None = typer.Option(
+        None, "--t-window", help="零分布尾部窗口（交易日）"
+    ),
+    window: int | None = typer.Option(
+        None, "--window", help="去冗余相关窗口（交易日）"
+    ),
+    threshold: float | None = typer.Option(
+        None, "--threshold", help="冗余判定阈值 |ρ|"
+    ),
+    linkage: str | None = typer.Option(None, "--linkage", help="层次聚类连接方式"),
+    by: str | None = typer.Option(None, "--by", help="代表标准：t_stat|ir|combined"),
+    fwd_window: int | None = typer.Option(None, "--fwd-window", help="forward 窗口"),
+    seed: int | None = typer.Option(None, "--seed", help="bootstrap 随机种子"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="禁用因子磁盘缓存"),
+    output_dir: Path | None = typer.Option(None, "--output-dir", help="输出目录"),
+    json_out: bool = typer.Option(False, "--json", help="JSON 输出"),
+):
+    """Phase B：walk-forward OOS 验证（train 选因子 → test 验证）。"""
+    try:
+        cfg = load_factor_clean_config(config) if config is not None else {}
+        train_months = train_months if train_months is not None else int(
+            cfg.get("oos_train_months", 12)
+        )
+        test_months = test_months if test_months is not None else int(
+            cfg.get("oos_test_months", 1)
+        )
+        top_k = top_k if top_k is not None else int(cfg.get("top_k", 5))
+        bootstrap_iters = bootstrap_iters if bootstrap_iters is not None else int(
+            cfg.get("bootstrap_iters", 200)
+        )
+        t_window = t_window if t_window is not None else int(cfg.get("t_window", 60))
+        window = window if window is not None else int(cfg.get("corr_window", 60))
+        threshold = threshold if threshold is not None else float(
+            cfg.get("corr_threshold", 0.7)
+        )
+        linkage = (
+            linkage if linkage is not None else str(cfg.get("cluster_linkage", "ward"))
+        )
+        by = by if by is not None else str(cfg.get("representative_by", "t_stat"))
+        fwd_window = fwd_window if fwd_window is not None else int(
+            cfg.get("fwd_window", 5)
+        )
+        out = run_phase_b(
+            state_path=state,
+            ohlcv_path=data,
+            train_months=train_months,
+            test_months=test_months,
+            top_k=top_k,
+            bootstrap_iters=bootstrap_iters,
+            t_window=t_window,
+            corr_window=window,
+            corr_threshold=threshold,
+            cluster_linkage=linkage,
+            representative_by=by,
+            fwd_window=fwd_window,
+            use_cache=not no_cache,
+            output_dir=output_dir,
+            seed=seed if seed is not None else 42,
+        )
+        summary = out["summary"]
+        if json_out:
+            typer.echo(
+                json.dumps(
+                    summary, ensure_ascii=False, indent=2, default=str
+                )
+            )
+            return
+        typer.echo(
+            f"期数: {summary['periods_total']}  有入选期: "
+            f"{summary['periods_with_selection']}  入选因子总数: "
+            f"{summary['periods_selected_total']}"
+        )
+        typer.echo(
+            f"OOS 胜率: {summary['overall_win_rate']:.1%}  "
+            f"显著率: {summary['overall_sig_rate']:.1%}  "
+            f"零分布 95 分位均值: {summary['null_95_mean']:.2f}"
+        )
         if output_dir is not None:
             typer.echo(f"输出: {output_dir}")
     except (ValueError, KeyError, FileNotFoundError) as exc:
