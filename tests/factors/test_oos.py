@@ -111,3 +111,29 @@ def test_bootstrap_null_smaller_than_original_trend_t():
     w = ic.iloc[-20:]
     t_orig = w.mean() / w.std(ddof=1) * np.sqrt(len(w))
     assert t_orig > np.quantile(np.abs(null), 0.99)
+
+
+# ---------------------------------------------------------------------------
+# Task 3 review fix: 非平凡零分布 + 短序列边界（防止退化实现静默通过）
+# ---------------------------------------------------------------------------
+
+
+def test_bootstrap_null_nontrivial_white_noise():
+    # 防退化：恒返回常数（如全零 / 只打乱一次复用）时,取值唯一性与
+    # q95 区间双断言必失败。注：numpy std() 对常数数组因浮点累加误差
+    # 可能返回 ~1e-16,故用 np.unique 判取值数而非 std>0。
+    rng = np.random.default_rng(0)
+    ic = pd.Series(rng.normal(0, 1, 120))
+    null = bootstrap_t_distribution(ic, 50, 20, seed=11)
+    assert np.unique(null).size > 1  # 掐死全零 / 常数复用：零分布必须有内部波动
+    q95 = np.quantile(null, 0.95)
+    assert 0.5 < q95 < 5.0  # 白噪声 t 的 95 分位应落在合理区间（0 与 ∞ 都被排除）
+
+
+def test_bootstrap_null_short_series_all_nan():
+    # 短序列边界：有效样本数 < t_window 时返回全 NaN
+    #（对齐 compute_test_period_stats 的 NaN 风格）
+    ic = pd.Series([0.1, 0.2, 0.3, 0.4, 0.5])  # 仅 5 个有效样本
+    out = bootstrap_t_distribution(ic, 10, 20, seed=1)
+    assert len(out) == 10
+    assert np.all(np.isnan(out))
