@@ -295,6 +295,74 @@ def compute_rolling_tstat(
 
 
 # ---------------------------------------------------------------------------
+# Layered IC panel（按 size × liquidity 层分组）
+# ---------------------------------------------------------------------------
+
+
+def compute_ic_by_layer(
+    factor_df: pd.DataFrame,
+    factor_name: str,
+    forward_return: pd.Series,
+    layer_df: pd.DataFrame,
+    *,
+    min_obs: int = 5,
+    min_days: int = 10,
+) -> pd.DataFrame:
+    """全市场 + 按层分组的日频截面 IC 面板。
+
+    Parameters
+    ----------
+    factor_df : DataFrame
+        含 ``date`` / ``code`` / ``factor_name`` 列。
+    forward_return : Series
+        与 ``factor_df`` 行对齐的 forward return。
+    layer_df : DataFrame
+        含 ``date, code, size_layer, liq_layer``；按 ``(date, code)`` 与
+        ``factor_df`` 对齐（行序无关）。
+    min_obs : int
+        单日单层截面有效样本下限（低于跳过当日）。
+    min_days : int
+        层有效天数下限；低于则 ``t_stat`` 为 NaN（n_days 仍记录）。
+
+    Returns
+    -------
+    DataFrame
+        index = ``["all"] + 9 层组合``（{size}-{liq}），列：
+        mean_ic（IC 时序均值）、t_stat（mean/std×√n，std=0 → inf）、n_days。
+    """
+    merged = factor_df[["date", "code", factor_name]].copy()
+    merged["__fwd__"] = forward_return.to_numpy(dtype=float)
+    # 层标签按 (date, code) 对齐（行序无关，宽表与层表可能来自不同源）
+    merged = merged.merge(
+        layer_df[["date", "code", "size_layer", "liq_layer"]],
+        on=["date", "code"],
+        how="left",
+    )
+
+    def _stats(sub: pd.DataFrame) -> tuple[float, float, int]:
+        ic = compute_ic(sub, factor_name, sub["__fwd__"], min_obs=min_obs)
+        n = len(ic)
+        if n == 0:
+            return float("nan"), float("nan"), 0
+        mean = float(ic.mean())
+        t = float(compute_ir(ic) * np.sqrt(n))  # std=0 → inf（同 rolling_tstat 语义）
+        return mean, t, n
+
+    rows: dict[str, dict] = {}
+    rows["all"] = dict(zip(("mean_ic", "t_stat", "n_days"), _stats(merged)))
+    for size in ("small", "mid", "large"):
+        for liq in ("low", "mid", "high"):
+            sub = merged[
+                (merged["size_layer"] == size) & (merged["liq_layer"] == liq)
+            ]
+            mean, t, n = _stats(sub)
+            rows[f"{size}-{liq}"] = {"mean_ic": mean, "t_stat": t, "n_days": n}
+    out = pd.DataFrame.from_dict(rows, orient="index")
+    out.loc[out["n_days"] < min_days, "t_stat"] = float("nan")
+    return out[["mean_ic", "t_stat", "n_days"]]
+
+
+# ---------------------------------------------------------------------------
 # Quantile (layered) returns
 # ---------------------------------------------------------------------------
 
