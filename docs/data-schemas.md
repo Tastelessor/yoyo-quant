@@ -242,3 +242,21 @@ neutralization:
   method: demean
   min_peers: 3
 ```
+
+## Phase A 因子相关性去冗余 — factors.ops.correlation 模块
+
+> 纯函数、无状态；输入宽表（date/code/因子列）或相关矩阵；不依赖交易管线。
+
+| 函数 | 输出 | 说明 |
+|------|------|------|
+| `compute_corr_matrix(factor_df, factors, *, window=60, method="spearman", agg="mean", min_obs=20)` | DataFrame（对称，index=columns=factors） | 取最近 window 个交易日，逐日截面 spearman 相关后按 agg 聚合；对角 1.0，数据不足 NaN |
+| `cluster_redundant(corr_matrix, *, threshold=0.7, linkage_method="ward")` | DataFrame（factor/cluster_id） | 距离=1-|ρ|，scipy ward 层次聚类，距离空间阈值 1-threshold 剪枝；NaN 按 1.0 |
+| `select_representative(cluster_df, stats, *, by="t_stat")` | DataFrame（cluster_id/representative/members/member_count） | 每簇取 t_stat/ir/combined（rank 均值）最大者；并列取字典序小者 |
+
+### Phase A 编排 — analysis.factor_clean.run_phase_a
+
+- 输入：state.parquet（monitor 长表）+ 全市场 ohlcv parquet
+- 候选：最新日期 state ∈ {active, decaying} 且 fwd_window 匹配的因子；run_factor KeyError（缺列）→ skipped
+- 输出 dict：as_of / factors / skipped / corr_matrix / clusters / representatives；output_dir 写 parquet + JSON + PNG
+- 配置：`configs/factor_clean.yaml`（load_factor_clean_config，默认 corr_threshold=0.7 / corr_window=60 / cluster_linkage=ward / representative_by=t_stat）
+- CLI：`yq factor clean-a --state ... --data ... [--config factor_clean.yaml] [--window 60] [--threshold 0.7] [--linkage ward] [--by t_stat] [--fwd-window 5] [--no-cache] [--output-dir] [--json]`

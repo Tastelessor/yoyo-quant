@@ -110,6 +110,8 @@ src/factors/
 
 ## 4. Phase A：因子相关性分析 + 去冗余
 
+> **状态：✅ 已实施（2026-08-06）**。实现计划见 [phase-a-correlation-plan.md](phase-a-correlation-plan.md)，执行记录见 [history.md](history.md) Phase 27。本节保留为设计说明（口径/阈值/算法动机），与实现契约（data-schemas.md）一致。
+
 ### 4.1 对"什么"算相关（口径选择）
 
 | 口径 | 算法 | 回答的问题 | 用途 |
@@ -196,12 +198,12 @@ train 期（前 6-12 个月）               test 期（未来 1-3 个月）
 
 ## 8. 实施节奏（敏捷 + TDD，阶段交付）
 
-| Phase | 内容 | 相对工作量 | 前置 |
-|-------|------|-----------|------|
-| 0 | factors 目录分层重构（§3.4） | 中 | 无 |
-| A | 相关性矩阵 + 聚类去冗余（`factors/ops/correlation.py`） | 小 | 0（新代码直接落在新分层） |
-| B | walk-forward OOS + bootstrap（`factors/ops/oos.py`） | 中 | A（选因子需去冗余后的候选集） |
-| C | 合成信号 + 回测对比（`factors/ops/synth.py`） | 中 | A + B |
+| Phase | 内容 | 相对工作量 | 前置 | 状态 |
+|-------|------|-----------|------|------|
+| 0 | factors 目录分层重构（§3.4） | 中 | 无 | ✅ 已完成（history Phase 26） |
+| A | 相关性矩阵 + 聚类去冗余（`factors/ops/correlation.py`） | 小 | 0（新代码直接落在新分层） | ✅ 已完成（history Phase 27） |
+| B | walk-forward OOS + bootstrap（`factors/ops/oos.py`） | 中 | A（选因子需去冗余后的候选集） | ❌ 待做 |
+| C | 合成信号 + 回测对比（`factors/ops/synth.py`） | 中 | A + B | ❌ 待做 |
 
 - **ABC 全做**（用户已确认）；每个 Phase 独立交付、独立验收，可暂停
 - 每个 Phase 按项目规范 TDD：先写测试 → 最小实现 → 跑绿 → 更新契约文档（data-schemas / project-plan / history）

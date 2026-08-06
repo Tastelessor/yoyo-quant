@@ -1529,3 +1529,31 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 - **Task 4**：批量替换外部 import（src 12 + tests 15 文件）零残留 → 全量 1058 + 30 pipeline → `4dc1a80`
 - **Task 5**：ruff 清理本任务引入的 5 处（__init__/registry/test_quality 的 I001 + E501，--fix 折行）；契约文档同步（factors-clean §3.4 实测数据、data-schemas 路径、project-plan 状态表+目录树）；存量 27 处 ruff 错误（builtin 内部 E501/N806、engine/test_pipeline 业务行）按先例不碰
 - 最终验收：`list_factors()` 93（single 88 / pair 5）不变；`from factors import compute_ic` 可用；全量 1058 单测 + 30 pipeline 绿；git 历史 16 rename
+
+## Phase 27: 因子相关性去冗余 Phase A（2026-08-06）
+
+### 决策记录
+- **动机**：全量首跑（Phase 25 Task 6）最新 8 个 active 因子全部集中在 GTJA"价格-成交量相关"类——calc_close_vol_rank_cov_5d / calc_high_vol_rank_corr_3d / calc_vwap_vol_rank_corr_5d / calc_vol_rank_intraday_corr_6d 的 t 与持续天数高度同步，本质是同一信号在不同窗口下的写法（数学上高度共线）。单因子有效 ≠ 组合有效，需先做因子间相关性检查（去冗余）
+- **相关口径（主）**：**因子值截面 rank 相关**——每天全市场按因子值算 spearman 秩相关，再对时间取均值（窗口 60 交易日，与 monitor 一致）。理由：组合真正冗余的是"持仓重叠"（每天排同一批股票），不是 IC 是否同向
+- **相关口径（辅）**：IC 时序相关仅作辅助诊断，不做判定（两个因子 IC 时序低相关反而可能是互补，那是组合要追求的）
+- **候选范围**：仅 active / decaying 因子（dead/reverse 已判无效，不参与组合），且 fwd_window 匹配
+- **冗余阈值**：默认 |ρ| > 0.7 判冗余（可在 `configs/factor_clean.yaml` 调整）
+- **聚类语义**：距离 = 1 − |ρ|，scipy ward 层次聚类，距离空间阈值 1−threshold 剪枝；NaN 距离按 1.0（视为不相关）。**连通分量语义落在 ward + distance 剪枝上**（不是显式连通分量：ward 合并代价不等于成对 ρ 上限，簇语义以测试锚点为准）
+- **代表因子**：每簇取 t_stat / ir / combined（两维 rank 均值）得分最高者；并列取字典序小者。rank 是全局而非簇内（保序性下两种语义结论一致，按全局 rank 定稿）
+- **兼容（配置加载）**：既有 `load_config` 强校验 strategies/risk 段，不适合清洗配置 → **新增 `load_factor_clean_config`**（缺省合并 + 4 项校验：corr_threshold ∈ (0,1)、corr_window 正整数、cluster_linkage ∈ {ward,complete,average,single}、representative_by ∈ {t_stat,ir,combined}）；CLI 优先级：显式参数 > config > 内置默认
+- **clusters 形状**：裁定为 **list of dicts**（`{cluster_id, representative, members}`），计划 Interface 行的 `[[cid, rep, members]]` 为笔误，已修正
+- **模块边界**：纯函数放 `factors/ops/correlation.py`（无状态、不依赖交易管线），业务编排放 `analysis/factor_clean.py`（只读 monitor 的 state 长表 + 因子值缓存，不重算 IC/状态）
+
+### 执行（TDD，6 task）
+
+- **Task 1**：`compute_corr_matrix`（窗口尾部取最近 N 个交易日 → 逐日截面 spearman → 按 agg 聚合；min_obs 低于阈值跳过当日；对角 1.0，数据不足 NaN）+ 6 tests → `8d5c3fd`
+- **Task 2**：`cluster_redundant`（scipy linkage + fcluster distance 剪枝；单因子直接返回簇 0）→ **plan-bug 修正**：计划内 3×3 阈值单调测试矩阵数学矛盾（c 距离 1.0 无法并簇），最小修正为 2 因子矩阵，意图保留 → `bf0794d`
+- **Task 3**：`select_representative`（按 by 打分 rank，全局 rank）→ **plan-bug 修正**：brief 参考实现 `rank(na_option="bottom")` 对 NaN 返回最大 rank，会选中 NaN 因子；改为源列 NaN 的行 _score 显式还原 np.nan（借 sort_values na_position="last" 排最后）→ `a7615b6`
+- **Task 4**：绘图（`analysis/plot.py` 新增 `plot_corr_matrix` 热力图 + `plot_cluster_dendrogram` 树状图，沿用 plot_sweep_heatmap / plot_factor_health_heatmap 风格）→ `1cef7b3`
+- **Task 5**：`run_phase_a` 编排（state + ohlcv → 候选 → 相关矩阵 → 聚类 → 代表；output_dir 写 parquet + JSON + PNG）→ **plan-bug 修正 ×2**：① `STATE_COLS` 无 `ir` 列只有 `rolling_ir`（brief 参考 `latest[["factor","t_stat","ir"]]` 必 KeyError）→ 改从 rolling_ir 取数 rename 为 ir；② parquet round-trip 后 date 为 object(str) → `_load_state` 加 `pd.to_datetime` 规范化。另加**空候选兜底**（全部缺列被跳过时提前返回空结构）与**单因子 dendrogram 守卫**（1×1 矩阵无聚类树，跳过出图）→ `72195fa` + `4adaa8e`
+- **Task 6**：`yq factor clean-a` CLI + `configs/factor_clean.yaml` + `load_factor_clean_config` → `e4e9cc4`
+
+### 测试与提交
+- 全量单测 **1091 passed**（Phase A 新增 33：correlation 19 + corr_plot 4 + factor_clean 4 + loader 3 + cli 3），ruff 干净（存量 27 处非本任务文件不碰；Task 6 的 F821×3 为 ruff 对 .yaml 的误报，检查时排除即可）
+- commits：`8d5c3fd`(相关矩阵)→`bf0794d`(聚类)→`a7615b6`(代表)→`1cef7b3`(绘图)→`72195fa`(编排)→`4adaa8e`(单因子守卫)→`e4e9cc4`(CLI+配置)→`09c3a50`(clusters 形状裁定修正计划)
+- 真实验证（真实 state.parquet + 全市场 ohlcv 跑 `yq factor clean-a`、核验收敛结果、PNG 落盘）由 Task 8 执行，结果在本节补记
