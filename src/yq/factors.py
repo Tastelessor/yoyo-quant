@@ -360,64 +360,70 @@ def factor_clean_a(
     json_out: bool = typer.Option(False, "--json", help="JSON 输出"),
 ):
     """Phase A：因子相关性去冗余（state + ohlcv → 代表因子清单）。"""
-    # 优先级：CLI 显式参数 > config 文件 > 内置默认（FACTOR_CLEAN_DEFAULTS）
-    cfg = load_factor_clean_config(config) if config is not None else {}
-    window = window if window is not None else int(cfg.get("corr_window", 60))
-    threshold = (
-        threshold if threshold is not None else float(cfg.get("corr_threshold", 0.7))
-    )
-    linkage = (
-        linkage if linkage is not None else str(cfg.get("cluster_linkage", "ward"))
-    )
-    by = by if by is not None else str(cfg.get("representative_by", "t_stat"))
-    fwd_window = fwd_window if fwd_window is not None else int(cfg.get("fwd_window", 5))
-    out = run_phase_a(
-        state_path=state,
-        ohlcv_path=data,
-        corr_window=window,
-        corr_threshold=threshold,
-        cluster_linkage=linkage,
-        representative_by=by,
-        fwd_window=fwd_window,
-        use_cache=not no_cache,
-        output_dir=output_dir,
-    )
-    reps = out["representatives"]
-    summary = [
-        {
-            "cluster_id": int(r["cluster_id"]),
-            "representative": r["representative"],
-            "members": list(r["members"]),
-        }
-        for r in reps.to_dict("records")
-    ]
-    if json_out:
-        import json as _json
+    try:
+        # 优先级：CLI 显式参数 > config 文件 > 内置默认（FACTOR_CLEAN_DEFAULTS）
+        cfg = load_factor_clean_config(config) if config is not None else {}
+        window = window if window is not None else int(cfg.get("corr_window", 60))
+        threshold = threshold if threshold is not None else float(
+            cfg.get("corr_threshold", 0.7)
+        )
+        linkage = (
+            linkage if linkage is not None else str(cfg.get("cluster_linkage", "ward"))
+        )
+        by = by if by is not None else str(cfg.get("representative_by", "t_stat"))
+        fwd_window = fwd_window if fwd_window is not None else int(
+            cfg.get("fwd_window", 5)
+        )
+        out = run_phase_a(
+            state_path=state,
+            ohlcv_path=data,
+            corr_window=window,
+            corr_threshold=threshold,
+            cluster_linkage=linkage,
+            representative_by=by,
+            fwd_window=fwd_window,
+            use_cache=not no_cache,
+            output_dir=output_dir,
+        )
+        reps = out["representatives"]
+        summary = [
+            {
+                "cluster_id": int(r["cluster_id"]),
+                "representative": r["representative"],
+                "members": list(r["members"]),
+            }
+            for r in reps.to_dict("records")
+        ]
+        if json_out:
+            import json as _json
 
-        typer.echo(
-            _json.dumps(
-                {
-                    "as_of": str(out["as_of"].date()),
-                    "factors": out["factors"],
-                    "skipped": out["skipped"],
-                    "clusters": summary,
-                    "outputs": str(output_dir) if output_dir else None,
-                },
-                ensure_ascii=False,
-                indent=2,
+            typer.echo(
+                _json.dumps(
+                    {
+                        "as_of": str(out["as_of"].date()),
+                        "factors": out["factors"],
+                        "skipped": out["skipped"],
+                        "clusters": summary,
+                        "outputs": str(output_dir) if output_dir else None,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
             )
-        )
-        return
-    typer.echo(
-        f"as_of: {out['as_of'].date()}  候选因子: {len(out['factors'])}  "
-        f"簇数: {len(reps)}"
-    )
-    for r in summary:
+            return
         typer.echo(
-            f"  簇 {r['cluster_id']}: 代表因子 {r['representative']}"
-            f"（成员 {r['members']}）"
+            f"as_of: {out['as_of'].date()}  候选因子: {len(out['factors'])}  "
+            f"簇数: {len(reps)}"
         )
-    if out["skipped"]:
-        typer.echo(f"跳过（缺列）: {out['skipped']}", err=True)
-    if output_dir is not None:
-        typer.echo(f"输出: {output_dir}")
+        for r in summary:
+            typer.echo(
+                f"  簇 {r['cluster_id']}: 代表因子 {r['representative']}"
+                f"（成员 {r['members']}）"
+            )
+        if out["skipped"]:
+            typer.echo(f"跳过（缺列）: {out['skipped']}", err=True)
+        if output_dir is not None:
+            typer.echo(f"输出: {output_dir}")
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        typer.echo(f"错误: {exc}", err=True)
+        raise typer.Exit(code=1) from exc

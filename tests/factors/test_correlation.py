@@ -91,7 +91,8 @@ def _corr_of(pairs, factors=("a", "b", "c")):
     mat = pd.DataFrame(np.zeros((3, 3)), index=list(factors), columns=list(factors))
     for f1, f2, r in pairs:
         mat.loc[f1, f2] = mat.loc[f2, f1] = r
-    np.fill_diagonal(mat.to_numpy(), 1.0)
+    for f in factors:
+        mat.loc[f, f] = 1.0
     return mat
 
 

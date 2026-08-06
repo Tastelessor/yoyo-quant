@@ -72,7 +72,8 @@ def compute_corr_matrix(
                 else:
                     val = float(np.median(daily))
                 mat.loc[f1, f2] = mat.loc[f2, f1] = val
-    np.fill_diagonal(mat.to_numpy(), 1.0)
+    for f in factors:
+        mat.loc[f, f] = 1.0
     return mat
 
 

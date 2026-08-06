@@ -77,3 +77,17 @@ def test_clean_a_cmd_requires_state(tmp_path):
     _ohlcv().to_parquet(data, index=False)
     result = runner.invoke(app, ["factor", "clean-a", "--data", str(data)])
     assert result.exit_code != 0
+
+
+def test_clean_a_cmd_invalid_threshold(tmp_path):
+    # CLI 显式非法阈值须被优雅捕获（错误消息 + 非 0 退出码），不得裸抛 traceback
+    state = _state(tmp_path)
+    data = tmp_path / "ohlcv.parquet"
+    _ohlcv().to_parquet(data, index=False)
+    result = runner.invoke(
+        app,
+        ["factor", "clean-a", "--state", str(state), "--data", str(data),
+         "--no-cache", "--threshold", "2.0"],
+    )
+    assert result.exit_code != 0
+    assert "错误" in result.output
