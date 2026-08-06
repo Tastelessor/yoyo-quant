@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typer
 
-from factors.cache import clear_factor_cache, get_default_cache_dir
+from factors.ops.cache import clear_factor_cache, get_default_cache_dir
 
 cache_app = typer.Typer(
     name="cache",

@@ -114,7 +114,7 @@ def gtja_volume_price_signal(
                 factor_df[col] = run_factor(_FACTOR_COMPUTERS[col], df).values
 
     if industry_map is not None:
-        from factors.neutralize import neutralize_factors
+        from factors.ops.neutralize import neutralize_factors
 
         factor_df = neutralize_factors(
             factor_df, industry_map, active, min_peers=min_peers

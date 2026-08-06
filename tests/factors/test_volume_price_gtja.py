@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.volume_price_gtja import (
+from factors.builtin.volume_price_gtja import (
     calc_candle_body_vol_composite,
     calc_close_vol_rank_cov_5d,
     calc_dollar_vol_std_6d,

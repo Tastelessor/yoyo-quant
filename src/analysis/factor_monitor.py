@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from factors.evaluation import (
+from factors.ops.evaluation import (
     compute_forward_returns,
     compute_ic,
     compute_rolling_ic,

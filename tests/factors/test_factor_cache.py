@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.cache import clear_factor_cache
+from factors.ops.cache import clear_factor_cache
 from factors.registry import FACTOR_REGISTRY, register_factor, run_factor
 
 

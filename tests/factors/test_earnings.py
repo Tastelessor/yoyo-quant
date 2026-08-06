@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.earnings import calc_earnings_acceleration, calc_earnings_surprise
+from factors.builtin.earnings import calc_earnings_acceleration, calc_earnings_surprise
 
 
 class TestCalcEarningsSurprise:

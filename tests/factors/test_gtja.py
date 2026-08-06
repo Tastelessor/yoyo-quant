@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.momentum import (
+from factors.builtin.momentum import (
     calc_momentum_5d_change,
     calc_momentum_5d_ratio,
     calc_momentum_6d_return,

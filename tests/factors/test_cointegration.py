@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from factors.cointegration import (
+from factors.builtin.cointegration import (
     calc_coint_pvalue,
     calc_half_life,
     calc_spread,

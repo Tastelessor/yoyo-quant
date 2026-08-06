@@ -107,7 +107,7 @@ def fundamental_diversified_signal(
     factor_df = pd.DataFrame({"date": df["date"], "code": df["code"], **factor_data})
 
     if industry_map is not None:
-        from factors.neutralize import neutralize_factors
+        from factors.ops.neutralize import neutralize_factors
 
         factor_df = neutralize_factors(
             factor_df, industry_map, list(factor_data.keys()), min_peers=min_peers

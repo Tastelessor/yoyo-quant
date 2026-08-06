@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.value import calc_bp, calc_ep
+from factors.builtin.value import calc_bp, calc_ep
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.volatility import calc_hv
+from factors.builtin.volatility import calc_hv
 
 
 @pytest.fixture

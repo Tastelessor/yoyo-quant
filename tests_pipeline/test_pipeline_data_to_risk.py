@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from data.filters import detect_limit_price, detect_suspension
-from factors.volatility import calc_hv
+from factors.builtin.volatility import calc_hv
 from risk.tradability import enforce_t1, filter_tradable
 from strategies.builtin.mean_reversion import mean_reversion_signal
 

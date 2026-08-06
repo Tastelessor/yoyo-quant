@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.liquidity import calc_amihud, calc_turnover
+from factors.builtin.liquidity import calc_amihud, calc_turnover
 
 
 @pytest.fixture

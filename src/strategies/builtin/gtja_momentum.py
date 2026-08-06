@@ -127,7 +127,7 @@ def gtja_momentum_signal(
 
     # Industry neutralization: strip industry exposure before ranking
     if industry_map is not None:
-        from factors.neutralize import neutralize_factors
+        from factors.ops.neutralize import neutralize_factors
 
         factor_df = neutralize_factors(
             factor_df, industry_map, FACTOR_COLS, min_peers=min_peers

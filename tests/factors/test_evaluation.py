@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.evaluation import (
+from factors.ops.evaluation import (
     compute_forward_returns,
     compute_ic,
     compute_ir,

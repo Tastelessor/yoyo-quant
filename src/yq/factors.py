@@ -14,7 +14,7 @@ from analysis.factor_monitor import (
     run_monitor,
 )
 from data.storage import load_parquet, save_parquet
-from factors.evaluation import DEFAULT_WINDOWS, evaluate_factors
+from factors.ops.evaluation import DEFAULT_WINDOWS, evaluate_factors
 from factors.registry import get_spec, list_factors, run_factor
 from yq.monitor import build_status_table, render_changes
 from yq.output import _records, render_dataframe

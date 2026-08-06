@@ -168,7 +168,7 @@ class BacktestEngine:
                 raise ValueError(
                     "atr_stop_loss requires market_data (OHLCV) to be passed to run()"
                 )
-            from factors.volume_price import calc_atr
+            from factors.builtin.volume_price import calc_atr
 
             window = self.atr_stop_loss.get("atr_window", 14)
             # calc_atr sorts internally by ["code", "date"], so we must
