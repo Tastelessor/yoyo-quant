@@ -125,3 +125,37 @@ def test_layers_min_rows_falls_back_rank():
     out = compute_size_liquidity_layers(df)
     assert out["size_layer"].notna().all() and out["liq_layer"].notna().all()
     assert sorted(out["size_layer"].unique()) == ["large", "mid", "small"]
+
+
+def test_layers_rank_fallback_all_duplicates():
+    """全重复值列：qcut 边界无法唯一必抛 ValueError → rank 降级分支生效。"""
+    df = pd.DataFrame(
+        {
+            "date": ["2025-06-02"] * 4,
+            "code": ["A", "B", "C", "D"],
+            "circ_mv": [1.0, 1.0, 1.0, 1.0],
+            "turnover_rate": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    out = compute_size_liquidity_layers(df)
+    assert out["size_layer"].notna().all() and out["liq_layer"].notna().all()
+    # rank(pct=True) 全等值 → 0.625 ∈ (1/3, 2/3] → 落 "mid" 桶（降级路径）
+    assert (out["size_layer"] == "mid").all()
+    assert (out["liq_layer"] == "mid").all()
+
+
+def test_layers_rank_fallback_single_value():
+    """单有效样本：qcut 同样抛 ValueError → rank 降级，标签合法。"""
+    df = pd.DataFrame(
+        {
+            "date": ["2025-06-02"] * 4,
+            "code": ["A", "B", "C", "D"],
+            "circ_mv": [3.0, np.nan, np.nan, np.nan],
+            "turnover_rate": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    out = compute_size_liquidity_layers(df)
+    # 唯一有效值 rank(pct=True) = 1.0 → 最上桶 "large"；其余行对应值 NaN → 层 NaN
+    assert out.loc[0, "size_layer"] == "large"
+    assert out["size_layer"].dropna().isin(["small", "mid", "large"]).all()
+    assert (out["liq_layer"] == "mid").all()  # 全重复 4 行 → 降级 "mid"
