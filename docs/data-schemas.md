@@ -302,3 +302,13 @@ neutralization:
   backtest_compare.parquet / equity_compare.png / summary.json。
 - 合成信号与 `Strategy.generate_signal` 输出格式一致（date, code, signal, confidence），
   可直接喂 `backtest.pipeline.run_pipeline`；Phase C 不改 strategies/portfolio 模块。
+
+## Phase 挖掘 M1：分层验证 + moneyflow（factors/ops/layering.py + evaluation.py + data/moneyflow.py + factors/mining/）
+
+- `fetch_fundamentals(date, cache_dir=None) -> DataFrame`：daily_basic，列 `code, pe, pb, total_mv, circ_mv, turnover_rate`（total_mv/circ_mv 亿元、turnover_rate %）
+- `compute_size_liquidity_layers(basic_df, *, bins=3) -> DataFrame`：每日截面三分位 → `(date, code, size_layer, liq_layer)`；size ∈ {small,mid,large}、liq ∈ {low,mid,high}；对应值为 NaN → 该维 NaN
+- `compute_ic_by_layer(factor_df, factor_name, forward_return, layer_df, *, min_obs=5, min_days=10) -> DataFrame`：index = `["all"] + 9 层组合`，列 `mean_ic / t_stat / n_days`；有效天数 < min_days → t_stat NaN
+- `fetch_moneyflow_by_date(date, cache_dir=None) -> DataFrame` / `build_moneyflow_panel(start, end, ...)`：moneyflow 长表（date/code + 18 个资金流字段，金额万元）
+- 因子（注册 `factors/registry`，tags=["moneyflow","mining"]）：`calc_moneyflow_net_ratio`（net_mf/circ_mv）、`calc_moneyflow_streak`（连续净流入天数）、`calc_moneyflow_big_net_ratio`（大单+特大单净额占比）
+- `run_mining_screen(*, ohlcv_path, basic_path, moneyflow_path, factors=None, fwd_window=5, min_obs=5, min_days=10, t_active=2.0, layer_t=2.81, output_dir=None) -> dict`：键 `screen`（index=因子，all + 9 层 × {mean_ic,t_stat,n_days} + domain）、`layers`、`summary`；output_dir 写 screen.parquet / layers.parquet / summary.json
+- 适用域判定：全市场 t ≥ t_active → "universal"；否则 Bonferroni 校正（layer_t=2.81）下显著层列表；无 → "none"

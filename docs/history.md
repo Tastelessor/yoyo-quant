@@ -1649,3 +1649,25 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 - **信号核对**：synth_signals 3,540,684 行（= ohlcv 全量行数，**非满交叉积**——726 交易日 × 4999 股的满交叉积为 3,629,274，差 88,590 系部分股票上市晚/退市/缺数所致，与 Phase 24 记录的 ohlcv 全量行数一致）；signal 分布 `{0: 3,529,748, 1: 7,060, -1: 3,876}`（3,529,748 + 7,060 + 3,876 = 3,540,684 自洽）——买入 7,060 = 10 只 × 706 个持有日（top_n=10 逐期逐日持有）；卖出 3,876 = 671 日 × 5 只（bottom_n=5）＋ 35 个再平衡日 × 15 只（5 bottom + 10 前持仓退出），与 rebalance 20 / top_n 10 / bottom_n 5 精确匹配
 - **如实记录（验收未达标）**：等权合成 Sharpe **0.085 显著低于**最佳单因子 calc_vol_rank_intraday_corr_6d（0.492），也低于 calc_high_vol_rank_corr_3d（0.224）；合成收益仅 +1.6% vs 最佳单因子 +39.9%。合成把 4 个代表等权混合后信号强度被稀释——代表因子（Phase A 按**相关冗余**去重）在**选股收益**上并不均衡：强正贡献（intraday_corr_6d、high_vol_rank_corr_3d）被弱/负贡献（atr_12d、close_vol_rank_cov_5d）中和。分散度角度：synth trade_count 1,318 与单因子 1,400-1,500 接近，未见换仓显著差异。**按计划约定不擅自调参数**（IC 加权、rebalance、top_n 均不动），如实记录后由用户裁决（候选方向：改 `--weighting ic_weighted` 重跑、核查合成信号/回测管道、或接受"合成劣于单因子"结论）
 - **产出**：`data/audit/factor_clean_c/`（summary.json + backtest_compare.parquet + synth_signals.parquet + equity_compare.png + nohup.log）
+
+## Phase 30: 因子挖掘 M1（分层验证 + moneyflow 资金流族）（2026-08-06）
+
+### 决策记录
+- **动机**：Phase A/B/C 全程基于量价同质因子，监控/去冗余/OOS/合成都在"价格-成交量相关"同一信号族内打转，边际信息已尽，需引入**另类数据源**（个股资金流 moneyflow）；同时量价因子天然是**条件因子**（小盘高换手层 vs 大盘低换手层强度可截然相反），全市场 IC 会"平均掉"分层信号——故先落地 **size×liquidity 分层验证**，防条件因子被全市场口径误杀
+- **分层口径**（用户确认，factor-mining-phase1-plan.md）：每日截面按 `circ_mv` / `turnover_rate` **三分位**（tercile）→ size ∈ {small, mid, large}、liq ∈ {low, mid, high}，正交 9 层；截面**相对分位**不用绝对阈值；维度事前定死、全层报告、禁止事后挑层；适用域判定：全市场 t ≥ t_active → "universal"，否则 Bonferroni 校正（9 层双侧，layer_t=2.81）下显著层列表，无 → "none"
+- **接口事实**（已核实）：`moneyflow` 单次最大 6000 行、**2000 积分门槛**，金额单位**万元**，`net_mf_amount` 为官方净流入（基于 L2 主动买卖单，不可简单由大小单相加）；`daily_basic` 的 `circ_mv` 流通市值（**万元**，fetch_fundamentals 转亿元）、`turnover_rate` 换手率（%），单次最大 6000 行；用户积分 **15000 分**覆盖两者
+
+### 执行（TDD，7 task）
+- **Task 1**：`fetch_fundamentals` 扩展 `circ_mv` / `turnover_rate`（daily_basic，total_mv/circ_mv 亿元、turnover_rate %）→ `f50f292`；缓存命中校验必需列、旧缓存自动重拉 → `1b7a38c`
+- **Task 2**：`compute_size_liquidity_layers` 分层标签原语（每日截面三分位，size×liq 9 层）→ `5bce540`；rank 分位降级分支直接测试覆盖（全重复值列）→ `c5fae4b`
+- **Task 3**：`compute_ic_by_layer` 分层 IC 面板原语（全市场 + 9 层，min_obs/min_days 门槛）→ `cfde6fe`
+- **Task 4**：`data/moneyflow.py` 资金流数据管线（fetch + 缓存 + 面板化）→ `de60123`
+- **Task 5**：资金流因子族（净流入强度/连续天数/大单净占比）+ 注册（tags=["moneyflow","mining"]）→ `a90363a`
+- **Task 6**：`run_mining_screen` 分层验证编排（全市场 + 9 层 IC + 适用域判定）→ `6add0e6`；因子列改位置赋值消除索引对齐隐式契约 → `d27dde1`；`_clean_registry` 恢复 FACTOR_REGISTRY 原状态（根治顺序污染）→ `1a732a4`
+- **Task 7**：`yq factor mining-screen` CLI + 挖掘分层验证配置 → `cb5a1a8`
+
+### 测试与提交
+- 全量单测 **1168 passed**（0 failed，50.38s；期望 1142 + 新增 ≈ 1165，实测多 3 个），ruff 干净
+- commits（`1effc91..HEAD`，11 个）：`f50f292`(fetch_fundamentals 扩展)→`1b7a38c`(缓存校验)→`5bce540`(分层标签原语)→`c5fae4b`(分位降级测试)→`cfde6fe`(分层 IC 原语)→`de60123`(moneyflow 管线)→`a90363a`(资金流因子族)→`1a732a4`(registry 清理修复)→`6add0e6`(分层验证编排)→`d27dde1`(因子列赋值修复)→`cb5a1a8`(mining CLI+配置)
+- 契约同步（Task 8）：data-schemas.md 追加 Phase 挖掘 M1 schema 段、project-plan.md 更新 context (因子选择) 行、factors-clean.md 新增 §7（分层验证 + 另类数据源）
+- 真实验证（真实 daily_basic + moneyflow 全市场数据跑 `yq factor mining-screen`、核对 9 层 IC 与适用域标签）由 Task 9 执行，结果见本节"Task 9"补记段

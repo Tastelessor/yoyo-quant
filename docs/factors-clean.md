@@ -125,7 +125,7 @@ src/factors/
 
 - 滚动窗口：**60 个交易日**（与 monitor 一致），相关结构会漂移，须滚动更新，不能算一次用三年
 - 分析对象：仅 **active / decaying** 因子（dead/reverse 因子已被判无效，不参与组合）
-- 相关阈值：默认 **|ρ| > 0.7 判定冗余**（可在 configs/factor_clean.yaml 调整，见 §9）
+- 相关阈值：默认 **|ρ| > 0.7 判定冗余**（可在 configs/factor_clean.yaml 调整，见 §10）
 
 ### 4.3 去冗余算法（可解释优先，正交化为可选增强）
 
@@ -194,18 +194,46 @@ train 期（前 6-12 个月）               test 期（未来 1-3 个月）
 > 执行记录见 [history.md](history.md) Phase 29。本节保留为设计说明（合成口径/回测对比动机），
 > 与实现契约（data-schemas.md）一致。
 
-- 去冗余后的代表因子（Phase A 输出）按**等权**或 **IC 加权**合成单一信号（默认等权，可在 configs/factor_clean.yaml 调整，见 §9）；可选增强：正交化加权（见 §3.3）
+- 去冗余后的代表因子（Phase A 输出）按**等权**或 **IC 加权**合成单一信号（默认等权，可在 configs/factor_clean.yaml 调整，见 §10）；可选增强：正交化加权（见 §3.3）
 - 合成信号输出为 strategies 模块输入格式（date, code, signal, confidence），由既有 `Strategy` 框架/组合器承接
 - 回测验证：接入既有 `backtest` 管道（data → factors → strategies → portfolio → risk → backtest），与"单因子最佳"对比——**验证组合是否真正优于单因子**（若组合 Sharpe 不比最佳单因子高，说明冗余没去干净或合成无效）
 - 注意：Phase C 不改变 strategies/portfolio 模块本身，只新增"因子 → 合成信号"的转换层
 
 **预期效果**：得到 1 个可交易的合成信号，其回测表现与最佳单因子相当或更好，且持仓分散度真实（不是同一批股票）。
 
-## 7. 总体预期效果（一句话版）
+## 7. 因子挖掘（分层验证 + 另类数据源）
+
+> **状态：✅ 已实施 M1（2026-08-06，分层验证基础设施 + moneyflow 资金流族）**。实现计划见 [factor-mining-phase1-plan.md](factor-mining-phase1-plan.md)，执行记录见 [history.md](history.md) Phase 30。本节为设计说明（分层验证动机/口径、moneyflow 族、后续因子族路线），与实现契约（data-schemas.md）一致。
+
+### 7.1 动机：为什么需要分层验证与另类数据源
+
+- **量价同质化**：Phase A/B/C 全程基于 80 个量价因子，其有效集收敛到"价格-成交量 rank 相关"同一信号族；在单一信号族内继续调参/合成，边际信息已尽，需要**另类数据源**提供正交信息
+- **条件因子误杀**：量价因子天然是条件因子——同一因子在小盘高换手层与大盘低换手层的强度可能截然相反（如资金流因子在小盘层的效应往往远强于大盘层）。全市场截面 IC 是各层 IC 的"平均"，会把分层信号抹平，导致条件因子被全市场口径误杀
+- **对策**：先落地 size × liquidity 两维 9 层分层验证（tercile、全层报告、禁止事后挑层），再逐层评估新因子；另类数据源第一个样板 = moneyflow 资金流族
+
+### 7.2 分层验证口径
+
+- 每日截面按 `circ_mv`（流通市值）/ `turnover_rate`（换手率）**三分位** → size ∈ {small, mid, large}、liq ∈ {low, mid, high}，正交 9 层；截面**相对分位**，不用绝对阈值
+- 维度事前定死、全层报告、禁止事后挑层；适用域判定：全市场 t ≥ t_active → "universal"，否则 Bonferroni 校正（9 层双侧，layer_t=2.81）显著层列表，无 → "none"
+- 原语：`factors/ops/layering.py::compute_size_liquidity_layers`（层标签）+ `factors/ops/evaluation.py::compute_ic_by_layer`（all + 9 层 IC/t/n_days）
+
+### 7.3 moneyflow 资金流族（M1 样板）
+
+- 数据管线 `data/moneyflow.py`（tushare `moneyflow`：单次 ≤6000 行、2000 积分门槛、金额万元、`net_mf_amount` 官方净流入）
+- 因子（`factors/mining/sources/moneyflow.py`，注册 tags=["moneyflow","mining"]）：`calc_moneyflow_net_ratio`（净流入/流通市值）、`calc_moneyflow_streak`（连续净流入天数）、`calc_moneyflow_big_net_ratio`（大单+特大单净额占比）
+- 评估编排 `factors/mining/pipeline.py::run_mining_screen`：因子值 → 层标签对齐 → 全市场 + 9 层 IC/t → 适用域标签；CLI `yq factor mining-screen`
+
+### 7.4 后续因子族路线
+
+- Phase 2 情绪/游资族（`limit_list_ths` / `top_list` 等涨跌停与龙虎榜）：小盘高换手层预期强，正是分层验证要救的品种
+- Phase 3 预期差族（`report_rc` 卖方一致预期）、Phase 4 事件族（解禁/增减持/大宗/回购）、Phase 5 筹码族（股东户数/筹码分布）、Phase 6 挖掘流水线完整版（正交化/数据质量/基准集对比）
+- 每个新数据源按 M1 样板：`data/` fetch + parquet 缓存 + 面板化 → `factors/mining/sources/` 因子族 → `run_mining_screen` 分层验证（复用既有原语）
+
+## 8. 总体预期效果（一句话版）
 
 > 从"80 个因子逐个看死活"升级为"**2-3 个独立信号维度 + 有据可依的选择机制 + OOS 验证过的合成信号**"，回答"我到底能用什么、为什么能用"。
 
-## 8. 实施节奏（敏捷 + TDD，阶段交付）
+## 9. 实施节奏（敏捷 + TDD，阶段交付）
 
 | Phase | 内容 | 相对工作量 | 前置 | 状态 |
 |-------|------|-----------|------|------|
@@ -218,7 +246,7 @@ train 期（前 6-12 个月）               test 期（未来 1-3 个月）
 - 每个 Phase 按项目规范 TDD：先写测试 → 最小实现 → 跑绿 → 更新契约文档（data-schemas / project-plan / history）
 - 每个 Phase 的交付标准在实现计划（factor-clean-plan.md）中逐 task 写明：功能、测试、验收命令
 
-## 9. 配置（configs/factor_clean.yaml，Q1-Q4 默认值）
+## 10. 配置（configs/factor_clean.yaml，Q1-Q4 默认值）
 
 开放问题收敛为**带默认值的配置项**，用户可随时改 yaml 调整，无需改代码：
 
