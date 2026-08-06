@@ -399,5 +399,26 @@ def _register_defaults() -> None:
     for name, func in pair_factors:
         register_factor(name, func, kind="pair", tags=["pair", "cointegration"])
 
+    # --- 新增：资金流因子族（3，mining） ---
+    from factors.mining.sources.moneyflow import (
+        calc_moneyflow_big_net_ratio,
+        calc_moneyflow_net_ratio,
+        calc_moneyflow_streak,
+    )
+
+    register_factor(
+        "calc_moneyflow_net_ratio",
+        calc_moneyflow_net_ratio,
+        tags=["moneyflow", "mining"],
+    )
+    register_factor(
+        "calc_moneyflow_streak", calc_moneyflow_streak, tags=["moneyflow", "mining"]
+    )
+    register_factor(
+        "calc_moneyflow_big_net_ratio",
+        calc_moneyflow_big_net_ratio,
+        tags=["moneyflow", "mining"],
+    )
+
 
 _register_defaults()

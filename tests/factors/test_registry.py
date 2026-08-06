@@ -92,6 +92,17 @@ NEW_SINGLE_PRIMARY = [
 
 SINGLE_PRIMARY = REGISTERED_SINGLE_PRIMARY + NEW_SINGLE_PRIMARY
 
+# 本次新增 moneyflow 因子（3）——需要 moneyflow 宽表列，独立分组（不纳入 OHLCV smoke）
+MONEYFLOW_SINGLE_PRIMARY = [
+    "calc_moneyflow_net_ratio",
+    "calc_moneyflow_streak",
+    "calc_moneyflow_big_net_ratio",
+]
+
+SINGLE_PRIMARY = (
+    REGISTERED_SINGLE_PRIMARY + NEW_SINGLE_PRIMARY + MONEYFLOW_SINGLE_PRIMARY
+)
+
 # pair 因子（5）——配对专用签名
 PAIR_PRIMARY = [
     "calc_spread",
@@ -396,8 +407,8 @@ class TestRegistryInventory:
         assert set(list_factors(kind="pair")) == set(PAIR_PRIMARY)
 
     def test_single_count(self) -> None:
-        # 51 primary + 37 aliases
-        assert len(list_factors(kind="single")) == 88
+        # 54 primary + 37 aliases
+        assert len(list_factors(kind="single")) == 91
         assert len(list_factors(kind="pair")) == 5
 
     def test_new_single_factors_smoke(self) -> None:
