@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.ops.synth import combine_factor_scores
+from factors.ops.synth import combine_factor_scores, scores_to_signals
 
 # ---------------------------------------------------------------------------
 # Task 1: combine_factor_scores
@@ -89,3 +89,53 @@ def test_combine_scores_missing_column_raises():
     df = pd.DataFrame({"date": ["2024-01-02"], "code": ["A"], "f1": [1.0]})
     with pytest.raises(ValueError):
         combine_factor_scores(df, ["f1", "f_missing"])
+
+# ---------------------------------------------------------------------------
+# Task 2: scores_to_signals
+# ---------------------------------------------------------------------------
+
+
+def test_scores_to_signals_basic_rebalance_rotation():
+    dates = pd.bdate_range("2024-01-02", periods=6)
+    rows = []
+    for d in dates:
+        for c in ["A", "B", "C"]:
+            rows.append({"date": d, "code": c})
+    df = pd.DataFrame(rows)
+    # 截面得分：A 最高、C 最低（每个交易日相同）
+    score = pd.Series([0.9, 0.5, 0.1] * 6, index=df.index)
+    out = scores_to_signals(df, score, rebalance=3, top_n=1, bottom_n=1)
+    assert list(out.columns) == ["date", "code", "signal", "confidence"]
+    assert out["signal"].dtype == int
+    assert out["confidence"].dtype == float
+    # 第一期（第 0-2 天，9 行）：买入 A（signal=1, conf=0.9），卖出 C（signal=-1, 0.5）
+    first = out.iloc[:9]
+    a_signals = first[first["code"] == "A"]["signal"].tolist()
+    assert a_signals == [1, 1, 1]
+    c_signals = first[first["code"] == "C"]["signal"].tolist()
+    assert c_signals == [-1, -1, -1]
+    b_signals = first[first["code"] == "B"]["signal"].tolist()
+    assert b_signals == [0, 0, 0]
+    a_conf = first[first["code"] == "A"]["confidence"].tolist()
+    assert all(abs(v - 0.9) < 1e-9 for v in a_conf)
+
+
+def test_scores_to_signals_nan_scores_not_selected():
+    df = pd.DataFrame(
+        {
+            "date": ["2024-01-02"] * 3,
+            "code": ["A", "B", "C"],
+        }
+    )
+    score = pd.Series([0.9, np.nan, 0.1], index=df.index)
+    out = scores_to_signals(df, score, rebalance=1, top_n=1, bottom_n=1)
+    assert out.loc[out["code"] == "A", "signal"].iloc[0] == 1
+    assert out.loc[out["code"] == "B", "signal"].iloc[0] == 0  # NaN 不入选
+    assert out.loc[out["code"] == "C", "signal"].iloc[0] == -1
+
+
+def test_scores_to_signals_top_bottom_zero_raises():
+    df = pd.DataFrame({"date": ["2024-01-02"], "code": ["A"]})
+    score = pd.Series([0.5], index=df.index)
+    with pytest.raises(ValueError):
+        scores_to_signals(df, score, rebalance=1, top_n=0, bottom_n=0)

@@ -59,3 +59,81 @@ def combine_factor_scores(
     with np.errstate(divide="ignore", invalid="ignore"):
         score = np.where(den > 0, num / np.where(den > 0, den, 1.0), np.nan)
     return pd.Series(score, index=factor_df.index, name="synth_score")
+
+
+def scores_to_signals(
+    factor_df: pd.DataFrame,
+    score: pd.Series,
+    *,
+    rebalance: int = 20,
+    top_n: int = 10,
+    bottom_n: int = 5,
+) -> pd.DataFrame:
+    """综合得分 → (date, code, signal, confidence)。
+
+    每个再平衡日：截面得分排序 → top_n 买入（signal=1，confidence=得分）
+    → bottom_n 卖出（signal=-1，confidence=0.5）；持仓延续到下一再平衡日；
+    前一期持仓未再买入的股票在再平衡日卖出。得分 NaN 的股票不入选。
+
+    Parameters
+    ----------
+    factor_df : DataFrame
+        含 ``date``、``code`` 列（与 score 行对齐）。
+    score : Series
+        综合得分（与 factor_df 行对齐）。
+    rebalance : int
+        再平衡周期（交易日）。
+    top_n / bottom_n : int
+        每期买入/卖出股票数。二者不能同时为 0。
+
+    Returns
+    -------
+    DataFrame
+        列：date, code, signal（int 1/-1/0）, confidence（float）。
+    """
+    if top_n <= 0 and bottom_n <= 0:
+        raise ValueError("top_n 与 bottom_n 至少一个 > 0")
+    df = factor_df[["date", "code"]].copy()
+    df["__score__"] = score.to_numpy(dtype=float)
+    dates = sorted(df["date"].unique())
+
+    signal = pd.Series(0, index=df.index, dtype=int)
+    confidence = pd.Series(0.0, index=df.index)
+    prev_holdings: set[str] = set()
+
+    for i in range(0, len(dates), rebalance):
+        rb_date = dates[i]
+        nxt = min(i + rebalance, len(dates))
+        hold_dates = dates[i:nxt]
+
+        day = df[df["date"] == rb_date].dropna(subset=["__score__"])
+        day = day.sort_values("__score__", ascending=False)
+        buys = set(day.head(top_n)["code"]) if top_n > 0 else set()
+        sells = set(day.tail(bottom_n)["code"]) if bottom_n > 0 else set()
+        score_by_code = dict(zip(day["code"], day["__score__"]))
+
+        for hd in hold_dates:
+            h_mask = df["date"] == hd
+            for c in buys:
+                m = h_mask & (df["code"] == c)
+                signal[m] = 1
+                confidence[m] = float(score_by_code.get(c, 0.5))
+            for c in sells - buys:
+                m = h_mask & (df["code"] == c)
+                signal[m] = -1
+                confidence[m] = 0.5
+        # 退出持仓：上一期买入但本期未买入 → 在再平衡日卖出
+        for c in prev_holdings - buys:
+            m = (df["date"] == rb_date) & (df["code"] == c)
+            signal[m] = -1
+            confidence[m] = 0.5
+        prev_holdings = buys
+
+    return pd.DataFrame(
+        {
+            "date": df["date"],
+            "code": df["code"],
+            "signal": signal,
+            "confidence": confidence,
+        }
+    )
