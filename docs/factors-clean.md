@@ -190,6 +190,10 @@ train 期（前 6-12 个月）               test 期（未来 1-3 个月）
 
 ## 6. Phase C：合成信号接入策略层
 
+> **状态：✅ 已实施（2026-08-06）**。实现计划见 [phase-c-synth-plan.md](phase-c-synth-plan.md)，
+> 执行记录见 [history.md](history.md) Phase 29。本节保留为设计说明（合成口径/回测对比动机），
+> 与实现契约（data-schemas.md）一致。
+
 - 去冗余后的代表因子（Phase A 输出）按**等权**或 **IC 加权**合成单一信号（默认等权，可在 configs/factor_clean.yaml 调整，见 §9）；可选增强：正交化加权（见 §3.3）
 - 合成信号输出为 strategies 模块输入格式（date, code, signal, confidence），由既有 `Strategy` 框架/组合器承接
 - 回测验证：接入既有 `backtest` 管道（data → factors → strategies → portfolio → risk → backtest），与"单因子最佳"对比——**验证组合是否真正优于单因子**（若组合 Sharpe 不比最佳单因子高，说明冗余没去干净或合成无效）

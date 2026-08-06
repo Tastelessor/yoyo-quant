@@ -284,3 +284,21 @@ neutralization:
 - win = (train_t>0 and test_ic_t>2) or (train_t<0 and test_ic_t<-2)；test 期显著且方向保持；任一侧 NaN → False
 - 配置：`configs/factor_clean.yaml` Phase B 段（oos_train_months=12 / oos_test_months=1 / top_k=5 / bootstrap_iters=200 / t_window=60），FACTOR_CLEAN_DEFAULTS 同步（11 项）
 - CLI：`yq factor clean-b --state ... --data ... [--config] [--train-months] [--test-months] [--top-k] [--bootstrap-iters] [--t-window] [--window] [--threshold] [--linkage] [--by] [--fwd-window] [--seed] [--no-cache] [--output-dir] [--json]`
+
+## Phase C 合成信号（factors/ops/synth.py + analysis/factor_synth.py）
+
+- `combine_factor_scores(factor_df, factors, weights=None) -> pd.Series`：
+  每日截面 `rank(pct=True)` 归一化 → 带符号权重加权平均（负权重 = 1-rank 反向）→
+  综合得分（name="synth_score"）；某行全部因子 NaN → NaN；等权为默认。
+- `scores_to_signals(factor_df, score, *, rebalance=20, top_n=10, bottom_n=5) -> DataFrame`：
+  列 `(date, code, signal, confidence)`——signal ∈ {1,-1,0}（int）、confidence ∈ [0,1]；
+  每 rebalance 日截面得分 top_n 买入 / bottom_n 卖出 / 前持仓退出卖出；得分 NaN 不入选。
+- `compute_ic_weights(state, factors, *, as_of, fwd_window=5, lookback=60) -> dict[str, float]`：
+  IC 均值权重（带符号），Σ|w|=1；全部无效 → 等权。
+- `run_phase_c(...) -> dict`：键 `signals`（合成信号）/ `compare`（回测对比表，
+  index=strategy，列 = BacktestEngine metrics）/ `equity_curves` / `summary`
+  （synth_weighting / best_single / synth_sharpe / best_single_sharpe /
+  synth_beats_best_single）。output_dir 写 synth_signals.parquet /
+  backtest_compare.parquet / equity_compare.png / summary.json。
+- 合成信号与 `Strategy.generate_signal` 输出格式一致（date, code, signal, confidence），
+  可直接喂 `backtest.pipeline.run_pipeline`；Phase C 不改 strategies/portfolio 模块。

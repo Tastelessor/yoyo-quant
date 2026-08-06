@@ -1613,3 +1613,24 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 - **如实记录：整体胜率 74.2% 明显 > 50%**（31 样本二项检验 z≈2.69、单侧 p≈0.005，统计上偏离随机）。但小样本下结论需谨慎：23 期中 **10 期无入选**（train 段无因子过 null_95 门槛，selected=0 不贡献胜率样本），入选集中在 13 期、每期 1-5 个；胜率时段聚集——2024-12 后各期（8-14 期）0.6-1.0 高胜率，早期（1-7 期）0.0-1.0 波动大；入选因子 train_t 全部为正（31/31），未见负方向入选。**解释方向**：样本量小（31）+ 候选因子数少 + 入选期稀疏，高位胜率或由后段少数强 IC 期驱动，不构成"选择机制有信息"的稳健证据；按设计 §5.4 不擅自改参数，待更大样本（更长历史 / 更多候选）复核后由用户裁决
 - **产出（首版，旧口径）**：`data/audit/factor_oos_b/`（oos_results.parquet + oos_summary.json + oos_winrate.png + oos_bootstrap.png + stderr.log）
 - **路径②重跑（2026-08-06，`e701ea3` 后）**：零分布改 AR(1) 残差打乱 + H0 均值归 0 + 逐因子门槛后，同命令重跑（约 14 分钟）→ **23 期，21 期有入选，入选因子 95 个**；**overall_win_rate = 0.653**（62/95）、overall_sig_rate = 0.663、**null_95_mean = 4.08**（旧口径 7.36，混合膨胀消除）。入选不再稀疏：原 10 期无入选 → 仅 2 期（period 2/3）；每因子入选次数大幅增加（calc_close_vol_rank_cov_5d 21 次 0.76、calc_vwap_vol_rank_corr_5d 15 次 0.87、calc_high_vol_rank_corr_3d 17 次 0.71、calc_amihud 5 次 0.80；calc_candle_body_vol_composite 8 次仅 0.125 拖累均值）。**解读**：胜率从 74.2% 降至 65.3%（62/95，二项检验 z≈3.0、p≈0.001 仍显著 > 50%），样本从 31 → 95 更稳健；阈值更合理（门槛 1.8-6.3，中位 4.1），入选的因子 train_t 贴近各自门槛；新口径下"选择机制有信息"的证据比旧口径更强（样本量大 3 倍且胜率仍显著），但 95 样本仍属小样本，且候选池有限（10 因子），继续按 §5.4 谨慎解读，Phase C 合成信号对比时以本口径结果为准
+
+## Phase 29: 合成信号接入策略层 Phase C（2026-08-06）
+
+### 决策记录
+- **动机**：Phase A 去冗余给出 4 个独立代表因子（ATR 族 1 + 量价族 3），Phase B OOS 验证选择机制有信息（路径② 65.3% 胜率），但"组合是否真正优于单因子"尚未验证。Phase C 把代表因子合成为单一信号接入回测管道，与最佳单因子对比——若合成 Sharpe 不比最佳单因子高，说明冗余没去干净或合成无效（factors-clean.md §6 设计预期）
+- **合成口径**：每日截面 `rank(pct=True)` 归一化 → 带符号权重加权平均（负权重 = 1-rank 反向）→ 综合得分（name="synth_score"）；权重两种口径——等权（默认）与 IC 加权（`compute_ic_weights`：as_of 前 lookback 窗口 IC 均值带符号权重、Σ|w|=1、全部无效退化为等权）
+- **信号生成**：`scores_to_signals` 按 rebalance 日轮动——截面得分 top_n 买入 / bottom_n 卖出 / 前持仓未再买入者退出卖出；输出 (date, code, signal, confidence)，与 `Strategy.generate_signal` 格式一致，可直接喂 `backtest.pipeline.run_pipeline`；**Phase C 不改 strategies/portfolio 模块**，只新增"因子 → 合成信号"转换层
+- **回测公平性约定**：合成信号与各单因子走**同一回测管道、同一参数**（capital / max_weight / dead_zone）；对比表 index=strategy、列 = BacktestEngine metrics（total_return / annual_return / sharpe_ratio / max_drawdown / win_rate / trade_count）；胜负判据 synth_sharpe vs best_single_sharpe（summary.synth_beats_best_single）；"组合更优"还需分散度真实（持仓不是同一批股票，避免冗余未去净的虚假增益）
+
+### 执行（TDD，5 task）
+- **Task 1**：`combine_factor_scores` 合成得分纯函数（每日截面 rank + 带符号加权，等权默认）→ `260c68d`
+- **Task 2**：`scores_to_signals` 得分转信号（rebalance 轮动，仿 multifactor_signal）+ 退出持仓分支补测试 → `1ae6feb` + `3a38659`
+- **Task 3**：`compute_ic_weights` IC 加权权重（带符号，Σ|w|=1）→ `1850110`
+- **Task 4**：`run_phase_c` 编排 + `compare_backtests` 回测对比 + `plot_equity_compare` 净值对比图预交付（Phase B"OOS 绘图预交付"先例）→ `8d213a2` + `7ebb434`
+- **Task 5**：`yq factor clean-c` CLI + Phase C 配置（configs/factor_clean.yaml synth_weighting）→ `02165e4`
+
+### 测试与提交
+- 全量单测 **1141 passed**（1119 基线 + 13 synth + 5 编排 + 1 plot + 2 CLI + 1 config），ruff 干净
+- commits（`e2f8c22..HEAD`，7 个）：`260c68d`(合成得分)→`1ae6feb`(信号)→`3a38659`(退出测试)→`1850110`(IC 权重)→`8d213a2`(编排)→`7ebb434`(净值对比图)→`02165e4`(CLI+配置)
+- 契约同步（Task 6）：data-schemas.md 追加 Phase C 合成信号 schema 段、project-plan.md 更新 context (因子选择) 行、factors-clean.md §6 加实施状态标注
+- 真实验证（真实 state.parquet + 全市场 ohlcv 跑 `yq factor clean-c`、合成 vs 单因子回测对比结论）由 Task 7 执行，结果在本节补记

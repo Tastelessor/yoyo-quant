@@ -80,7 +80,7 @@
 | factors (相关性去冗余) | ✅ 完成 | Phase A: ops/correlation.py（相关矩阵+聚类+代表）+ analysis/factor_clean.py 编排 + yq factor clean-a + factor_clean.yaml |
 | factors (walk-forward OOS) | ✅ 完成 | Phase B: ops/oos.py（窗口生成+选因子+test 统计+bootstrap 零分布）+ analysis/factor_oos.py 编排 + yq factor clean-b + factor_clean.yaml Phase B 段；零分布为路径②（AR(1) 残差打乱 + H0 均值归 0 + 逐因子门槛，`e701ea3`） |
 | strategies (基本面组合) | ✅ 完成 | fundamental_diversified.py: 3 因子 IR 加权（评估后从 9 个候选中筛选）+ YAML 配置 |
-| context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
+| context (因子选择) | 🔲 路线图 | Phase C: factors/ops/synth.py（合成得分/信号/IC 权重）+ analysis/factor_synth.py::run_phase_c + yq factor clean-c（合成信号 vs 单因子回测对比） |
 | context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
 | strategies (多类别组合) | ✅ 完成 | multi_category.py: 6 类别加权投票 + 7 tests |
 | data (指数成分股) | ✅ 完成 | fetcher.py: fetch_index_constituents + fetch_daily_batch + 18 tests |
