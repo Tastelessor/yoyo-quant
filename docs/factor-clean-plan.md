@@ -1,6 +1,6 @@
 # 因子清洗（factors-clean）实现计划 —— Phase 0：src/factors/ 目录分层重构
 
-> **For Hermes:** 按 task 逐个实现；每 task 走完整 TDD 循环（写失败测试 → 跑失败 → 最小实现 → 跑通过 → commit），实现前 invoke `karpathy-guidelines` skill。
+> 按 task 逐个实现；每 task 走完整 TDD 循环（写失败测试 → 跑失败 → 最小实现 → 跑通过 → commit），实现前 invoke `karpathy-guidelines` skill。
 
 **Goal:** 把扁平化的 `src/factors/`（19 个文件混三层）重构为分层结构：顶层只留调度（registry）与算子原语（operators），因子实现进 `factors/builtin/`，对因子的操作（评估/中性化/缓存 + 后续 A/B/C 清洗）进 `factors/ops/`。**纯结构迁移，零行为变更**。
 
