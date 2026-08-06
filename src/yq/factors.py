@@ -7,12 +7,14 @@ from pathlib import Path
 import pandas as pd
 import typer
 
+from analysis.factor_clean import run_phase_a
 from analysis.factor_monitor import (
     DEFAULT_OUTPUT_DIR,
     diff_states,
     load_state,
     run_monitor,
 )
+from config.loader import load_factor_clean_config
 from data.storage import load_parquet, save_parquet
 from factors.ops.evaluation import DEFAULT_WINDOWS, evaluate_factors
 from factors.registry import get_spec, list_factors, run_factor
@@ -337,3 +339,85 @@ def factor_monitor(
     except (ValueError, KeyError, FileNotFoundError) as exc:
         typer.echo(f"错误: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+
+@factor_app.command("clean-a")
+def factor_clean_a(
+    state: Path = typer.Option(..., "--state", help="monitor 输出的 state.parquet"),
+    data: Path = typer.Option(..., "--data", help="全市场行情 parquet"),
+    config: Path | None = typer.Option(None, "--config", help="factor_clean.yaml"),
+    window: int | None = typer.Option(None, "--window", help="相关滚动窗口（交易日）"),
+    threshold: float | None = typer.Option(
+        None, "--threshold", help="冗余判定阈值 |ρ|"
+    ),
+    linkage: str | None = typer.Option(None, "--linkage", help="层次聚类连接方式"),
+    by: str | None = typer.Option(None, "--by", help="代表标准：t_stat|ir|combined"),
+    fwd_window: int | None = typer.Option(
+        None, "--fwd-window", help="state 的 forward 窗口"
+    ),
+    no_cache: bool = typer.Option(False, "--no-cache", help="禁用因子磁盘缓存"),
+    output_dir: Path | None = typer.Option(None, "--output-dir", help="输出目录"),
+    json_out: bool = typer.Option(False, "--json", help="JSON 输出"),
+):
+    """Phase A：因子相关性去冗余（state + ohlcv → 代表因子清单）。"""
+    # 优先级：CLI 显式参数 > config 文件 > 内置默认（FACTOR_CLEAN_DEFAULTS）
+    cfg = load_factor_clean_config(config) if config is not None else {}
+    window = window if window is not None else int(cfg.get("corr_window", 60))
+    threshold = (
+        threshold if threshold is not None else float(cfg.get("corr_threshold", 0.7))
+    )
+    linkage = (
+        linkage if linkage is not None else str(cfg.get("cluster_linkage", "ward"))
+    )
+    by = by if by is not None else str(cfg.get("representative_by", "t_stat"))
+    fwd_window = fwd_window if fwd_window is not None else int(cfg.get("fwd_window", 5))
+    out = run_phase_a(
+        state_path=state,
+        ohlcv_path=data,
+        corr_window=window,
+        corr_threshold=threshold,
+        cluster_linkage=linkage,
+        representative_by=by,
+        fwd_window=fwd_window,
+        use_cache=not no_cache,
+        output_dir=output_dir,
+    )
+    reps = out["representatives"]
+    summary = [
+        {
+            "cluster_id": int(r["cluster_id"]),
+            "representative": r["representative"],
+            "members": list(r["members"]),
+        }
+        for r in reps.to_dict("records")
+    ]
+    if json_out:
+        import json as _json
+
+        typer.echo(
+            _json.dumps(
+                {
+                    "as_of": str(out["as_of"].date()),
+                    "factors": out["factors"],
+                    "skipped": out["skipped"],
+                    "clusters": summary,
+                    "outputs": str(output_dir) if output_dir else None,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    typer.echo(
+        f"as_of: {out['as_of'].date()}  候选因子: {len(out['factors'])}  "
+        f"簇数: {len(reps)}"
+    )
+    for r in summary:
+        typer.echo(
+            f"  簇 {r['cluster_id']}: 代表因子 {r['representative']}"
+            f"（成员 {r['members']}）"
+        )
+    if out["skipped"]:
+        typer.echo(f"跳过（缺列）: {out['skipped']}", err=True)
+    if output_dir is not None:
+        typer.echo(f"输出: {output_dir}")

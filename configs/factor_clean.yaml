@@ -1,0 +1,7 @@
+# Phase A/B/C 因子清洗配置（load_factor_clean_config 加载，缺省合并）
+corr_threshold: 0.7        # 去冗余相关阈值（调低更激进，保留因子更少）
+corr_window: 60            # 相关滚动窗口（交易日，与 monitor 一致）
+cluster_linkage: ward      # 层次聚类连接方式
+representative_by: t_stat  # 簇代表选择标准：t_stat | ir | combined
+fwd_window: 5              # 取 state 中该 forward 窗口的统计行
+exclude_untradable: true   # 沿用监控默认：排除涨跌停/停牌日

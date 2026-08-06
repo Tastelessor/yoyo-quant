@@ -8,12 +8,14 @@ import pytest
 import yaml
 
 from config.loader import (
+    FACTOR_CLEAN_DEFAULTS,
     build_backtest_config,
     build_regime_switch,
     build_risk_engine,
     build_stock_selector,
     build_strategies,
     load_config,
+    load_factor_clean_config,
 )
 from risk.rule_engine import RuleEngine
 from strategies.base import Strategy
@@ -348,3 +350,24 @@ class TestBuildBacktestConfig:
         result = build_backtest_config(cfg)
         assert result == {"stop_loss": -0.10}
         assert "take_profit" not in result
+
+
+class TestLoadFactorCleanConfig:
+    """load_factor_clean_config：缺省合并 + 校验。"""
+
+    def test_load_factor_clean_config_defaults(self, tmp_path):
+        p = tmp_path / "fc.yaml"
+        p.write_text("corr_threshold: 0.8\n", encoding="utf-8")
+        cfg = load_factor_clean_config(p)
+        assert cfg["corr_threshold"] == 0.8
+        assert cfg["corr_window"] == FACTOR_CLEAN_DEFAULTS["corr_window"] == 60
+
+    def test_load_factor_clean_config_missing_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            load_factor_clean_config(tmp_path / "nope.yaml")
+
+    def test_load_factor_clean_config_bad_value_raises(self, tmp_path):
+        p = tmp_path / "fc.yaml"
+        p.write_text("corr_threshold: 2.0\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="corr_threshold"):
+            load_factor_clean_config(p)

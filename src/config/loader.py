@@ -31,6 +31,42 @@ def load_config(path: Path) -> dict:
     return cfg
 
 
+FACTOR_CLEAN_DEFAULTS: dict = {
+    "corr_threshold": 0.7,
+    "corr_window": 60,
+    "cluster_linkage": "ward",
+    "representative_by": "t_stat",
+    "fwd_window": 5,
+    "exclude_untradable": True,
+}
+
+
+def load_factor_clean_config(path: Path) -> dict:
+    """加载 Phase A/B/C 清洗配置：缺省合并 + 校验。
+
+    ``configs/factor_clean.yaml`` 顶层键即参数名；缺省值见
+    ``FACTOR_CLEAN_DEFAULTS``。与 ``load_config`` 不同：不要求
+    strategies/risk 段（factor_clean.yaml 是独立清洗配置）。
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Config not found: {path}")
+    with open(path) as f:
+        user = yaml.safe_load(f) or {}
+    cfg = {**FACTOR_CLEAN_DEFAULTS, **user}
+    if not 0.0 < float(cfg["corr_threshold"]) < 1.0:
+        raise ValueError(
+            f"corr_threshold 必须在 (0,1) 内，收到 {cfg['corr_threshold']!r}"
+        )
+    if not isinstance(cfg["corr_window"], int) or cfg["corr_window"] < 1:
+        raise ValueError(f"corr_window 必须为正整数，收到 {cfg['corr_window']!r}")
+    if cfg["cluster_linkage"] not in {"ward", "complete", "average", "single"}:
+        raise ValueError(f"cluster_linkage 非法: {cfg['cluster_linkage']!r}")
+    if cfg["representative_by"] not in {"t_stat", "ir", "combined"}:
+        raise ValueError(f"representative_by 非法: {cfg['representative_by']!r}")
+    return cfg
+
+
 def build_industry_map(
     cfg: dict,
 ) -> tuple[dict[str, str], int] | None:
