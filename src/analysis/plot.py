@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -363,5 +364,59 @@ def plot_cluster_dendrogram(
     ax.axhline(1.0 - threshold, color="red", linestyle="--", linewidth=1.0)
     ax.set_ylabel("距离（1 − |ρ|）")
     ax.set_title(title or "因子层次聚类（ward）")
+    fig.tight_layout()
+    return fig
+
+
+def plot_oos_winrate(period_summary: pd.DataFrame) -> matplotlib.figure.Figure:
+    """Phase B：每期 OOS 胜率条形图。
+
+    Parameters
+    ----------
+    period_summary : DataFrame
+        含 period_idx / selected / win_rate 列；win_rate 为 NaN 的期不画条。
+    """
+    df = period_summary.dropna(subset=["win_rate"]).copy()
+    fig, ax = plt.subplots(figsize=(max(6, len(df) * 0.5), 4))
+    if len(df):
+        ax.bar(df["period_idx"], df["win_rate"], color="#4C72B0")
+        ax.axhline(0.5, color="gray", linestyle="--", linewidth=1, label="50% 基准")
+        mean_wr = df["win_rate"].mean()
+        ax.axhline(mean_wr, color="#C44E52", linewidth=1.5,
+                   label=f"均值 {mean_wr:.0%}")
+    ax.set_xlabel("period_idx")
+    ax.set_ylabel("win_rate")
+    ax.set_ylim(0, 1)
+    ax.legend()
+    ax.set_title("OOS 胜率（train 选 → test 验）")
+    fig.tight_layout()
+    return fig
+
+
+def plot_bootstrap_null(
+    factors: list[str],
+    abs_t: list[float],
+    null_95: float,
+) -> matplotlib.figure.Figure:
+    """Phase B：入选因子 |train_t| vs bootstrap 零分布 95 分位。
+
+    Parameters
+    ----------
+    factors : list[str]
+        入选因子名（x 轴）。
+    abs_t : list[float]
+        对应 |train_t|。
+    null_95 : float
+        零分布 |t| 的 95 分位（红色参考线）。
+    """
+    fig, ax = plt.subplots(figsize=(max(6, len(factors) * 0.8), 4))
+    ax.bar(factors, abs_t, color="#55A868")
+    ax.axhline(null_95, color="#C44E52", linewidth=1.5,
+               label=f"bootstrap 95 分位 {null_95:.2f}")
+    ax.axhline(2.0, color="gray", linestyle="--", linewidth=1, label="|t|=2 阈值")
+    ax.set_ylabel("|train_t|")
+    ax.set_xticklabels(factors, rotation=45, ha="right")
+    ax.legend()
+    ax.set_title("入选因子显著性 vs 随机基线")
     fig.tight_layout()
     return fig
