@@ -94,8 +94,9 @@ def plot_sweep_heatmap(
                     label = f"{val:.2e}"
                 else:
                     label = f"{val:.2f}"
-                ax.text(j, i, label, ha="center", va="center",
-                        color=text_color, fontsize=8)
+                ax.text(
+                    j, i, label, ha="center", va="center", color=text_color, fontsize=8
+                )
 
     fig.colorbar(im, ax=ax, shrink=0.8)
     fig.tight_layout()
@@ -382,8 +383,7 @@ def plot_oos_winrate(period_summary: pd.DataFrame) -> matplotlib.figure.Figure:
         ax.bar(df["period_idx"], df["win_rate"], color="#4C72B0")
         ax.axhline(0.5, color="gray", linestyle="--", linewidth=1, label="50% 基准")
         mean_wr = df["win_rate"].mean()
-        ax.axhline(mean_wr, color="#C44E52", linewidth=1.5,
-                   label=f"均值 {mean_wr:.0%}")
+        ax.axhline(mean_wr, color="#C44E52", linewidth=1.5, label=f"均值 {mean_wr:.0%}")
     ax.set_xlabel("period_idx")
     ax.set_ylabel("win_rate")
     ax.set_ylim(0, 1)
@@ -396,9 +396,9 @@ def plot_oos_winrate(period_summary: pd.DataFrame) -> matplotlib.figure.Figure:
 def plot_bootstrap_null(
     factors: list[str],
     abs_t: list[float],
-    null_95: float,
+    null_95s: list[float],
 ) -> matplotlib.figure.Figure:
-    """Phase B：入选因子 |train_t| vs bootstrap 零分布 95 分位。
+    """Phase B：入选因子 |train_t| vs 各自 bootstrap 零分布 95 分位。
 
     Parameters
     ----------
@@ -406,17 +406,25 @@ def plot_bootstrap_null(
         入选因子名（x 轴）。
     abs_t : list[float]
         对应 |train_t|。
-    null_95 : float
-        零分布 |t| 的 95 分位（红色参考线）。
+    null_95s : list[float]
+        每个因子的零分布 |t| 的 95 分位（逐因子红色参考线，路径②）。
     """
     fig, ax = plt.subplots(figsize=(max(6, len(factors) * 0.8), 4))
     ax.bar(factors, abs_t, color="#55A868")
-    ax.axhline(null_95, color="#C44E52", linewidth=1.5,
-               label=f"bootstrap 95 分位 {null_95:.2f}")
+    for x, v in zip(range(len(factors)), null_95s):
+        ax.axhline(v, color="#C44E52", linewidth=1.0, alpha=0.6)
+    if null_95s:
+        mean_null = float(np.mean(null_95s))
+        ax.axhline(
+            mean_null,
+            color="#C44E52",
+            linewidth=1.5,
+            label=f"bootstrap 95 分位均值 {mean_null:.2f}",
+        )
     ax.axhline(2.0, color="gray", linestyle="--", linewidth=1, label="|t|=2 阈值")
     ax.set_ylabel("|train_t|")
     ax.set_xticklabels(factors, rotation=45, ha="right")
     ax.legend()
-    ax.set_title("入选因子显著性 vs 随机基线")
+    ax.set_title("入选因子显著性 vs 随机基线（逐因子零分布）")
     fig.tight_layout()
     return fig

@@ -40,6 +40,7 @@ def test_heatmap_returns_figure(sweep_results):
     fig = plot_sweep_heatmap(sweep_results, "window", "num_std", "sharpe_ratio")
     assert isinstance(fig, type(fig).__mro__[0])  # is a Figure or subclass
     import matplotlib.pyplot as plt
+
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
 
@@ -48,6 +49,7 @@ def test_heatmap_custom_metric(sweep_results):
     """应支持自定义指标。"""
     fig = plot_sweep_heatmap(sweep_results, "window", "num_std", "total_return")
     import matplotlib.pyplot as plt
+
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
 
@@ -59,6 +61,7 @@ def test_metrics_returns_figure(sweep_results):
     """应返回 matplotlib Figure。"""
     fig = plot_sweep_metrics(sweep_results, ["window"])
     import matplotlib.pyplot as plt
+
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
 
@@ -69,6 +72,7 @@ def test_metrics_custom_list(sweep_results):
         sweep_results, ["window"], metrics=["sharpe_ratio", "win_rate"]
     )
     import matplotlib.pyplot as plt
+
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
 
@@ -77,6 +81,7 @@ def test_metrics_two_params(sweep_results):
     """应支持双参数 X 轴。"""
     fig = plot_sweep_metrics(sweep_results, ["window", "num_std"])
     import matplotlib.pyplot as plt
+
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
 
@@ -196,7 +201,7 @@ def test_plot_oos_winrate(tmp_path):
 
 
 def test_plot_bootstrap_null(tmp_path):
-    fig = plot_bootstrap_null(["f1", "f2"], [4.5, 2.8], 2.1)
+    fig = plot_bootstrap_null(["f1", "f2"], [4.5, 2.8], [2.1, 3.3])
     ax = fig.axes[0]
     assert len(ax.patches) == 2
     assert ax.get_ylabel() == "|train_t|"

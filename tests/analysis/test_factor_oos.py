@@ -1,4 +1,5 @@
 """tests/analysis/test_factor_oos.py — run_phase_b 集成测试。"""
+
 import json
 
 import numpy as np
@@ -18,11 +19,17 @@ def _ohlcv(n_days=120, n_stocks=40, seed=0):
             close = 10.0 + rng.normal(scale=0.5)
             rows.append(
                 {
-                    "date": d, "code": c, "open": close - 0.05,
-                    "high": close + 0.1, "low": close - 0.1, "close": close,
+                    "date": d,
+                    "code": c,
+                    "open": close - 0.05,
+                    "high": close + 0.1,
+                    "low": close - 0.1,
+                    "close": close,
                     "pre_close": close - 0.02,
                     "volume": float(rng.integers(1_000, 100_000)),
-                    "limit_up": False, "limit_down": False, "is_suspended": False,
+                    "limit_up": False,
+                    "limit_down": False,
+                    "is_suspended": False,
                 }
             )
     return pd.DataFrame(rows)
@@ -36,10 +43,15 @@ def _state(tmp_path, n_days=120, seed=0):
         for name, t in [("calc_momentum_5d_change", 5.0), ("calc_volume_ratio", 3.0)]:
             rows.append(
                 {
-                    "date": d, "factor": name, "fwd_window": 5,
+                    "date": d,
+                    "factor": name,
+                    "fwd_window": 5,
                     "ic": float(rng.normal(0.02, 0.03)),
-                    "rolling_ic": 0.02, "rolling_ir": 0.4,
-                    "t_stat": t, "state": "active", "sustain_days": 100,
+                    "rolling_ic": 0.02,
+                    "rolling_ir": 0.4,
+                    "t_stat": t,
+                    "state": "active",
+                    "sustain_days": 100,
                 }
             )
     df = pd.DataFrame(rows, columns=STATE_COLS)
@@ -57,10 +69,15 @@ def _state_nan_ic(tmp_path, n_days=120, nan_days=60, seed=0):
         for name, t in [("calc_momentum_5d_change", 5.0), ("calc_volume_ratio", 3.0)]:
             rows.append(
                 {
-                    "date": d, "factor": name, "fwd_window": 5,
+                    "date": d,
+                    "factor": name,
+                    "fwd_window": 5,
                     "ic": float(rng.normal(0.02, 0.03)),
-                    "rolling_ic": 0.02, "rolling_ir": 0.4,
-                    "t_stat": t, "state": "active", "sustain_days": 100,
+                    "rolling_ic": 0.02,
+                    "rolling_ir": 0.4,
+                    "t_stat": t,
+                    "state": "active",
+                    "sustain_days": 100,
                 }
             )
     df = pd.DataFrame(rows, columns=STATE_COLS)
@@ -76,18 +93,36 @@ def test_run_phase_b_outputs_structure(tmp_path):
     _ohlcv().to_parquet(ohlcv)
     state = _state(tmp_path)
     out = run_phase_b(
-        state_path=state, ohlcv_path=ohlcv,
-        train_months=1, test_months=1, top_k=2,
-        bootstrap_iters=50, t_window=10, corr_window=20,
-        fwd_window=5, seed=42,
+        state_path=state,
+        ohlcv_path=ohlcv,
+        train_months=1,
+        test_months=1,
+        top_k=2,
+        bootstrap_iters=50,
+        t_window=10,
+        corr_window=20,
+        fwd_window=5,
+        seed=42,
     )
     assert set(out.keys()) == {"periods", "summary"}
     periods = out["periods"]
     assert len(periods) > 0
     expect_cols = {
-        "period_idx", "train_start", "train_end", "test_start", "test_end",
-        "factor", "cluster_id", "train_t", "null_95", "selected",
-        "test_ic_mean", "test_ic_t", "test_ic_n", "test_sig", "win",
+        "period_idx",
+        "train_start",
+        "train_end",
+        "test_start",
+        "test_end",
+        "factor",
+        "cluster_id",
+        "train_t",
+        "null_95",
+        "selected",
+        "test_ic_mean",
+        "test_ic_t",
+        "test_ic_n",
+        "test_sig",
+        "win",
     }
     assert expect_cols.issubset(periods.columns)
     assert periods["win"].dtype == bool
@@ -97,8 +132,12 @@ def test_run_phase_b_outputs_structure(tmp_path):
         assert abs(row["train_t"]) > max(1.0, row["null_95"])
     s = out["summary"]
     for key in (
-        "periods_total", "periods_with_selection", "overall_win_rate",
-        "overall_sig_rate", "null_95_mean", "period_win_rates",
+        "periods_total",
+        "periods_with_selection",
+        "overall_win_rate",
+        "overall_sig_rate",
+        "null_95_mean",
+        "period_win_rates",
     ):
         assert key in s
 
@@ -109,18 +148,94 @@ def test_run_phase_b_writes_output_dir(tmp_path):
     state = _state(tmp_path)
     out_dir = tmp_path / "out"
     run_phase_b(
-        state_path=state, ohlcv_path=ohlcv,
-        train_months=1, test_months=1, top_k=2,
-        bootstrap_iters=50, t_window=10, corr_window=20,
-        fwd_window=5, seed=42, output_dir=out_dir,
+        state_path=state,
+        ohlcv_path=ohlcv,
+        train_months=1,
+        test_months=1,
+        top_k=2,
+        bootstrap_iters=50,
+        t_window=10,
+        corr_window=20,
+        fwd_window=5,
+        seed=42,
+        output_dir=out_dir,
     )
     for fname in (
-        "oos_results.parquet", "oos_summary.json",
-        "oos_winrate.png", "oos_bootstrap.png",
+        "oos_results.parquet",
+        "oos_summary.json",
+        "oos_winrate.png",
+        "oos_bootstrap.png",
     ):
         assert (out_dir / fname).exists(), fname
     summary = json.loads((out_dir / "oos_summary.json").read_text(encoding="utf-8"))
     assert "overall_win_rate" in summary
+
+
+def test_run_phase_b_per_factor_null95(tmp_path):
+    """路径②：null_95 逐因子独立（不再跨因子混合）。
+
+    构造两因子：高自相关 IC（φ=0.8，零分布肥尾 → 门槛高）vs 白噪声 IC
+    （门槛≈纯随机）。断言：同期两因子的 null_95 不同、各自独立计算
+    （高自相关因子 null_95 > 白噪声因子），入选按自身门槛过滤。
+    """
+    rng = np.random.default_rng(7)
+    dates = pd.bdate_range("2025-06-02", periods=120)
+    ar = np.empty(120)
+    wn = rng.normal(0.02, 0.03, 120)
+    ar[0] = wn[0]
+    for t in range(1, 120):
+        ar[t] = 0.8 * ar[t - 1] + wn[t]
+    rows = []
+    for d, a, w in zip(dates, ar, wn):
+        rows.append(
+            {
+                "date": d,
+                "factor": "calc_momentum_5d_change",
+                "fwd_window": 5,
+                "ic": float(a),
+                "rolling_ic": 0.02,
+                "rolling_ir": 0.4,
+                "t_stat": 5.0,
+                "state": "active",
+                "sustain_days": 100,
+            }
+        )
+        rows.append(
+            {
+                "date": d,
+                "factor": "calc_volume_ratio",
+                "fwd_window": 5,
+                "ic": float(w),
+                "rolling_ic": 0.02,
+                "rolling_ir": 0.4,
+                "t_stat": 5.0,
+                "state": "active",
+                "sustain_days": 100,
+            }
+        )
+    state = tmp_path / "state.parquet"
+    pd.DataFrame(rows, columns=STATE_COLS).to_parquet(state)
+    ohlcv = tmp_path / "ohlcv.parquet"
+    _ohlcv().to_parquet(ohlcv)
+    out = run_phase_b(
+        state_path=state,
+        ohlcv_path=ohlcv,
+        train_months=1,
+        test_months=1,
+        top_k=2,
+        bootstrap_iters=200,
+        t_window=10,
+        corr_window=20,
+        fwd_window=5,
+        seed=42,
+    )
+    periods = out["periods"]
+    sel = periods[periods["selected"]]
+    assert len(sel) > 0
+    null_by_factor = dict(zip(sel["factor"], sel["null_95"]))
+    assert (
+        null_by_factor["calc_momentum_5d_change"] > null_by_factor["calc_volume_ratio"]
+    )
 
 
 def test_run_phase_b_too_short_raises(tmp_path):
@@ -129,8 +244,10 @@ def test_run_phase_b_too_short_raises(tmp_path):
     state = _state(tmp_path, n_days=60)
     with pytest.raises(ValueError, match="窗口"):
         run_phase_b(
-            state_path=state, ohlcv_path=ohlcv,
-            train_months=12, test_months=1,
+            state_path=state,
+            ohlcv_path=ohlcv,
+            train_months=12,
+            test_months=1,
         )
 
 
@@ -147,10 +264,16 @@ def test_run_phase_b_ic_nan_not_pollute_null(tmp_path):
     _ohlcv().to_parquet(ohlcv)
     state = _state_nan_ic(tmp_path)
     out = run_phase_b(
-        state_path=state, ohlcv_path=ohlcv,
-        train_months=1, test_months=1, top_k=2,
-        bootstrap_iters=50, t_window=10, corr_window=20,
-        fwd_window=5, seed=42,
+        state_path=state,
+        ohlcv_path=ohlcv,
+        train_months=1,
+        test_months=1,
+        top_k=2,
+        bootstrap_iters=50,
+        t_window=10,
+        corr_window=20,
+        fwd_window=5,
+        seed=42,
     )
     periods = out["periods"]
     assert periods["null_95"].notna().all()
@@ -164,8 +287,14 @@ def test_run_phase_b_fwd_window_too_long_raises(tmp_path):
     state = _state(tmp_path)
     with pytest.raises(ValueError, match="test 期过短"):
         run_phase_b(
-            state_path=state, ohlcv_path=ohlcv,
-            train_months=1, test_months=1, top_k=2,
-            bootstrap_iters=50, t_window=10, corr_window=20,
-            fwd_window=50, seed=42,
+            state_path=state,
+            ohlcv_path=ohlcv,
+            train_months=1,
+            test_months=1,
+            top_k=2,
+            bootstrap_iters=50,
+            t_window=10,
+            corr_window=20,
+            fwd_window=50,
+            seed=42,
         )

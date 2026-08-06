@@ -4,6 +4,7 @@
 ``backtest.walk_forward``（避免回测链耦合）；窗口语义与其一致：
 train 紧贴 test、滑窗步长 = test_months。
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -126,8 +127,12 @@ def compute_test_period_stats(
     vals = ic_series.dropna()
     n = int(len(vals))
     if n < min_days:
-        return {"ic_mean": float(vals.mean()) if n else float("nan"),
-                "ic_t": float("nan"), "ic_n": n, "sig": False}
+        return {
+            "ic_mean": float(vals.mean()) if n else float("nan"),
+            "ic_t": float("nan"),
+            "ic_n": n,
+            "sig": False,
+        }
     mean = float(vals.mean())
     std = float(vals.std(ddof=1))
     if std == 0 or vals.nunique() <= 1:
@@ -143,11 +148,17 @@ def bootstrap_t_distribution(
     *,
     seed: int | None = None,
 ) -> np.ndarray:
-    """train 期 IC 序列打乱重排 → t 统计量零分布（多重检验修正）。
+    """train 期 IC 序列 AR(1) 残差打乱重建 → t 统计量零分布（路径②）。
 
-    破坏 IC 的时序结构但保留其分布形态，每次打乱后取尾部 ``t_window``
-    个样本的 t = mean/std×√n——与 monitor 的滚动 t 同口径。零分布的
-    |t| 高分位即"纯随机下 t 能多大"的参考线。
+    路径②（去均值/AR 残差打乱，H0 语义）：
+    1. 对 IC 序列拟合 AR(1)：IC_t = c + φ·IC_{t-1} + ε_t（OLS）。
+    2. 残差 ε 中心化（去均值）。
+    3. 每次迭代：打乱残差，用 φ 重建序列（IC̃_t = φ·IC̃_{t-1} + ε̃_t，
+       起点 0、无截距 → 重建均值归 0），取尾部 ``t_window`` 个样本的
+       t = mean/std×√n——与 monitor 的滚动 t 同口径。
+    零分布的 |t| 高分位即"因子无效（H0：IC 均值=0）时 t 能多大"的参考线。
+    相比混合打乱：不跨因子拼接（消除方差膨胀）、重建均值归 0（消除均值
+    抬升），门槛反映纯随机下 t 的真实幅度。
 
     Parameters
     ----------
@@ -172,10 +183,30 @@ def bootstrap_t_distribution(
     values = ic_series.dropna().to_numpy(dtype=float)
     if values.size < t_window:
         return np.full(n_iters, np.nan)
+    if values.size < 3:
+        return np.full(n_iters, np.nan)
+    # AR(1) OLS：IC_t = c + φ·IC_{t-1} + ε
+    x = values[:-1]
+    y = values[1:]
+    xm, ym = x.mean(), y.mean()
+    var_x = float(((x - xm) ** 2).sum())
+    if var_x == 0:
+        return np.full(n_iters, np.nan)
+    phi = float(((x - xm) * (y - ym)).sum() / var_x)
+    c = ym - phi * xm
+    resid = y - (c + phi * x)
+    resid = resid - resid.mean()  # 残差中心化（H0 均值 0）
+    n = len(values)
     rng = np.random.default_rng(seed)
     out = np.empty(n_iters)
     for i in range(n_iters):
-        w = rng.permutation(values)[-t_window:]
+        e = rng.permutation(resid)
+        # 重建：无截距、起点 0 → 序列均值归 0（H0：因子无效时 IC 均值=0）
+        rec = np.empty(n)
+        rec[0] = 0.0
+        for j in range(1, n):
+            rec[j] = phi * rec[j - 1] + e[j - 1]
+        w = rec[-t_window:]
         std = w.std(ddof=1)
         out[i] = np.inf if std == 0 else w.mean() / std * np.sqrt(len(w))
     return out

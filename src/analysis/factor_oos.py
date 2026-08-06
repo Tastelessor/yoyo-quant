@@ -4,6 +4,7 @@
 （去冗余 + bootstrap 零分布过滤 + top-K），在 test 段重算 IC 验证。
 不重算 monitor 的滚动统计。
 """
+
 from __future__ import annotations
 
 import json
@@ -30,9 +31,21 @@ from factors.registry import run_factor
 ACTIVE_STATES = ("active", "decaying")
 
 PERIOD_COLS = [
-    "period_idx", "train_start", "train_end", "test_start", "test_end",
-    "factor", "cluster_id", "train_t", "null_95", "selected",
-    "test_ic_mean", "test_ic_t", "test_ic_n", "test_sig", "win",
+    "period_idx",
+    "train_start",
+    "train_end",
+    "test_start",
+    "test_end",
+    "factor",
+    "cluster_id",
+    "train_t",
+    "null_95",
+    "selected",
+    "test_ic_mean",
+    "test_ic_t",
+    "test_ic_n",
+    "test_sig",
+    "win",
 ]
 
 
@@ -90,8 +103,10 @@ def run_phase_b(
     """
     state = _load_state(state_path)
     for key, val in (
-        ("train_months", train_months), ("test_months", test_months),
-        ("top_k", top_k), ("bootstrap_iters", bootstrap_iters),
+        ("train_months", train_months),
+        ("test_months", test_months),
+        ("top_k", top_k),
+        ("bootstrap_iters", bootstrap_iters),
         ("t_window", t_window),
     ):
         if not isinstance(val, int) or val < 1:
@@ -164,17 +179,17 @@ def run_phase_b(
             clusters = cluster_redundant(
                 corr, threshold=corr_threshold, linkage_method=cluster_linkage
             )
-            reps_df = select_representative(
-                clusters, train_stats, by=representative_by
-            )
+            reps_df = select_representative(clusters, train_stats, by=representative_by)
             reps = reps_df["representative"].tolist()
             cluster_of = dict(zip(clusters["factor"], clusters["cluster_id"]))
         else:
             reps = list(keep)
             cluster_of = {keep[0]: 0}
 
-        # bootstrap 零分布：全部候选的 train 段 IC 打乱
-        null_list: list[float] = []
+        # bootstrap 零分布（路径②）：逐因子 AR(1) 残差打乱重建，不跨因子混合。
+        # 每因子用自己的 IC 序列拟合 AR(1) → 残差打乱重建（均值归 0）→
+        # 自身 |t| 的 95 分位作门槛。因子间门槛独立（IC 尺度/自相关不可比）。
+        null_95_by_factor: dict[str, float] = {}
         ic_mask = (
             (state["date"] >= train_idx[0])
             & (state["date"] <= as_of)
@@ -183,23 +198,19 @@ def run_phase_b(
         )
         for f, ic in state.loc[ic_mask, ["factor", "ic"]].groupby("factor")["ic"]:
             if ic.dropna().size >= t_window:
-                null_list.extend(
-                    bootstrap_t_distribution(
-                        ic, bootstrap_iters, t_window, seed=seed
-                    ).tolist()
+                null_dist = bootstrap_t_distribution(
+                    ic, bootstrap_iters, t_window, seed=seed
                 )
-        null_arr = np.asarray(null_list, dtype=float)
-        null_95 = (
-            float(np.nanquantile(np.abs(null_arr), 0.95))
-            if null_arr.size
-            else np.inf
-        )
-        null95s.append(null_95)
+                null_95_by_factor[f] = float(np.nanquantile(np.abs(null_dist), 0.95))
+        null95s.extend(null_95_by_factor.values())
 
-        # 入选：代表集 ∩ |t| > max(1, null_95)，按 |t| 降序取 top_k
+        # 入选：代表集 ∩ |t| > max(1, 该因子自身 null_95)，按 |t| 降序取 top_k
         pool = [
-            f for f in reps
-            if f in train_t and np.abs(train_t[f]) > max(1.0, null_95)
+            f
+            for f in reps
+            if f in train_t
+            and f in null_95_by_factor
+            and np.abs(train_t[f]) > max(1.0, null_95_by_factor[f])
         ]
         pool.sort(key=lambda f: -abs(train_t[f]))
         selected = select_top_factors(
@@ -228,7 +239,7 @@ def run_phase_b(
                     "factor": f,
                     "cluster_id": cluster_of.get(f, 0),
                     "train_t": tt,
-                    "null_95": null_95,
+                    "null_95": null_95_by_factor.get(f, np.nan),
                     "selected": True,
                     "test_ic_mean": st["ic_mean"],
                     "test_ic_t": st["ic_t"],
@@ -258,16 +269,10 @@ def run_phase_b(
         "bootstrap_iters": bootstrap_iters,
         "t_window": t_window,
         "periods_total": len(windows),
-        "periods_with_selection": int(
-            sum(p["selected"] > 0 for p in period_wr)
-        ),
+        "periods_with_selection": int(sum(p["selected"] > 0 for p in period_wr)),
         "periods_selected_total": int(sum(p["selected"] for p in period_wr)),
-        "overall_win_rate": (
-            float(periods["win"].mean()) if n_sel else np.nan
-        ),
-        "overall_sig_rate": (
-            float(periods["test_sig"].mean()) if n_sel else np.nan
-        ),
+        "overall_win_rate": (float(periods["win"].mean()) if n_sel else np.nan),
+        "overall_sig_rate": (float(periods["test_sig"].mean()) if n_sel else np.nan),
         "null_95_mean": float(np.mean(null95s)) if null95s else np.nan,
         "period_win_rates": period_wr,
     }
@@ -289,7 +294,7 @@ def run_phase_b(
             plot_bootstrap_null(
                 periods["factor"].tolist(),
                 periods["train_t"].abs().tolist(),
-                float(np.mean(null95s)) if null95s else 0.0,
+                periods["null_95"].tolist(),
             ).savefig(out / "oos_bootstrap.png", dpi=110, bbox_inches="tight")
 
     return {"periods": periods, "summary": summary}

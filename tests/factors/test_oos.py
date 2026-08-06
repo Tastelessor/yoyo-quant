@@ -1,4 +1,5 @@
 """tests/factors/test_oos.py — Phase B 纯函数单测（Task 1-3 共用文件）。"""
+
 # Task 1 只交付 generate_oos_windows；Task 2 加回 select_top_factors /
 # compute_test_period_stats（及 numpy）；Task 3 最后追加
 # bootstrap_t_distribution，至此 import 清单完整（四个函数）。
@@ -89,7 +90,7 @@ def test_compute_test_period_stats_constant():
 
 
 # ---------------------------------------------------------------------------
-# Task 3: bootstrap_t_distribution
+# Task 3: bootstrap_t_distribution（路径②：AR(1) 残差打乱 + H0 重建）
 # ---------------------------------------------------------------------------
 
 
@@ -106,11 +107,44 @@ def test_bootstrap_t_distribution_deterministic_and_length():
 
 
 def test_bootstrap_null_smaller_than_original_trend_t():
-    ic = pd.Series(np.arange(60) / 10.0)  # 强趋势序列：原尾部窗口 t 巨大
+    # 带噪声的强趋势：原尾部 t 巨大，但 H0 重建（残差中心化、均值归 0）
+    # 后零分布应显著小于原 t —— 验证"去均值"消除均值抬升。
+    rng = np.random.default_rng(0)
+    ic = pd.Series(np.arange(60) / 10.0 + rng.normal(0, 0.5, 60))
     null = bootstrap_t_distribution(ic, 100, 20, seed=3)
     w = ic.iloc[-20:]
     t_orig = w.mean() / w.std(ddof=1) * np.sqrt(len(w))
-    assert t_orig > np.quantile(np.abs(null), 0.99)
+    assert t_orig > 5.0  # 趋势确实显著
+    assert np.quantile(np.abs(null), 0.99) < t_orig
+
+
+def test_bootstrap_null_h0_zero_mean():
+    # 路径②核心语义：正均值白噪声（均值 2）原 t 巨大，但残差中心化 +
+    # 重建均值归 0 后，零分布应围绕 0（|t| 中位数小、q95 远小于原 t）。
+    rng = np.random.default_rng(1)
+    ic = pd.Series(rng.normal(2.0, 0.3, 120))
+    null = bootstrap_t_distribution(ic, 200, 60, seed=5)
+    w = ic.iloc[-60:]
+    t_orig = w.mean() / w.std(ddof=1) * np.sqrt(len(w))
+    assert t_orig > 5.0  # 均值漂移显著
+    assert np.quantile(np.abs(null), 0.5) < 1.0  # 零分布中心化
+    assert np.quantile(np.abs(null), 0.95) < t_orig
+
+
+def test_bootstrap_null_ar1_phi_sensitive():
+    # 零分布应反映 IC 的 AR(1) 结构：强正自相关（φ=0.9）重建序列的
+    # 尾部窗口均值漂移被 φ 放大 → 零分布更肥尾 → q95 更高（自相关制造
+    # 虚假显著性的幅度更大，门槛理应更严）。
+    rng = np.random.default_rng(2)
+    n = 240
+    wn = rng.normal(0, 1, n)
+    ar = np.empty(n)
+    ar[0] = wn[0]
+    for t in range(1, n):
+        ar[t] = 0.9 * ar[t - 1] + wn[t]
+    null_wn = bootstrap_t_distribution(pd.Series(wn), 100, 60, seed=9)
+    null_ar = bootstrap_t_distribution(pd.Series(ar), 100, 60, seed=9)
+    assert np.quantile(np.abs(null_ar), 0.95) > np.quantile(np.abs(null_wn), 0.95)
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +166,7 @@ def test_bootstrap_null_nontrivial_white_noise():
 
 def test_bootstrap_null_short_series_all_nan():
     # 短序列边界：有效样本数 < t_window 时返回全 NaN
-    #（对齐 compute_test_period_stats 的 NaN 风格）
+    # （对齐 compute_test_period_stats 的 NaN 风格）
     ic = pd.Series([0.1, 0.2, 0.3, 0.4, 0.5])  # 仅 5 个有效样本
     out = bootstrap_t_distribution(ic, 10, 20, seed=1)
     assert len(out) == 10
