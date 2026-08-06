@@ -1577,6 +1577,7 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 ### 决策记录
 - **动机**：Phase A 去冗余只解决"哪些因子相互独立"，未验证"这套选因子机制是否可信"。每期 train 段选因子（去冗余 + bootstrap 零分布过滤 + top-K）→ test 段重算 IC 验证；若 OOS 胜率 ≈50% 说明选择机制没有信息，回到 Phase A 重新思考。OOS 验证的是"选择机制"不是"因子永生"，监控状态机仍持续跑，二者配套（OOS 校准方法，监控跟踪实时状态）
 - **零分布口径（多重检验修正）**：train 段全部候选因子的日频 IC 序列打乱重排（破坏时序结构、保留分布形态），每次取尾部 t_window 个样本算 t = mean/std×√n——与 monitor 滚动 t 同口径；|t| 零分布的 95 分位（null_95）作入选参考线，入选要求 |t| > max(1, null_95)。理由：每期从大量因子选 top-K，纯随机下也有约 4 个 |t|>2
+- **零分布口径修正（路径②，2026-08-06 用户裁决）**：首版"打乱 IC 原值 + 跨因子混合"暴露两个统计缺陷——① t = mean/std×√n 对样本**顺序不敏感**，直接打乱等价于从边际分布不放回抽样，无法构造 H0；② 跨因子混合（不同因子 IC 尺度/自相关不可比）膨胀 null_95 至 8.8，制造虚假高门槛。修正为：**拟合 AR(1)（IC_t = c+φ·IC_{t-1}+ε）→ 残差中心化 → 打乱残差 → 无截距重建序列（起点 0，均值归 0，H0：因子无效时 IC 均值=0）→ 尾部 t_window 样本的 t**，且**逐因子独立**计算自身 null_95（pool = 代表集 ∩ |train_t| > max(1, 因子自身 null_95)）。φ 大（强自相关）→ 零分布更肥尾 → 门槛更严。实现：`e701ea3`
 - **win 定义**：test 期显著且方向保持——`(train_t>0 and test_ic_t>2) or (train_t<0 and test_ic_t<-2)`；任一侧 NaN → False
 - **不耦合 walk_forward**：不 import `backtest.walk_forward`（避免回测链耦合），窗口语义与其一致——train 紧贴 test、滑窗步长 = test_months、test 终点超出数据末日的期不产生
 - **每期切片内存策略**：不做全量因子值——每期只切 [train 首日 − LOOKBACK_MAX, test 末日 + fwd_window] 的行情段再跑 run_factor，大市值全历史行情下内存可控，同时天然限定 IC 计算范围

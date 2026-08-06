@@ -78,7 +78,7 @@
 | factors (质量) | ✅ 完成 | builtin/quality.py: roe_level + roe_stability + cashflow_quality + 10 tests |
 | factors (分层) | ✅ 完成 | Phase 0: builtin/(13 因子实现) + ops/(评估/中性化/缓存) 分层；顶层 re-export 兼容 + 1058 单测 + 30 pipeline |
 | factors (相关性去冗余) | ✅ 完成 | Phase A: ops/correlation.py（相关矩阵+聚类+代表）+ analysis/factor_clean.py 编排 + yq factor clean-a + factor_clean.yaml |
-| factors (walk-forward OOS) | ✅ 完成 | Phase B: ops/oos.py（窗口生成+选因子+test 统计+bootstrap 零分布）+ analysis/factor_oos.py 编排 + yq factor clean-b + factor_clean.yaml Phase B 段 |
+| factors (walk-forward OOS) | ✅ 完成 | Phase B: ops/oos.py（窗口生成+选因子+test 统计+bootstrap 零分布）+ analysis/factor_oos.py 编排 + yq factor clean-b + factor_clean.yaml Phase B 段；零分布为路径②（AR(1) 残差打乱 + H0 均值归 0 + 逐因子门槛，`e701ea3`） |
 | strategies (基本面组合) | ✅ 完成 | fundamental_diversified.py: 3 因子 IR 加权（评估后从 9 个候选中筛选）+ YAML 配置 |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
 | context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
