@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from factors.cache import get_default_cache_dir, load_cached, save_cached
+from factors.ops.cache import get_default_cache_dir, load_cached, save_cached
 
 VALID_KINDS = ("single", "pair")
 
@@ -193,7 +193,7 @@ def calc_factors(
 
 def _register_defaults() -> None:
     """Auto-register all built-in factors with primary names and aliases."""
-    from factors.momentum import (
+    from factors.builtin.momentum import (
         calc_momentum_5d_change,
         calc_momentum_5d_ratio,
         calc_momentum_6d_return,
@@ -212,7 +212,7 @@ def _register_defaults() -> None:
         register_factor(primary_name, func, tags=["momentum", "gtja"])
         register_factor(alias, func, tags=["momentum", "gtja"])
 
-    from factors.volume_price_gtja import (
+    from factors.builtin.volume_price_gtja import (
         calc_candle_body_vol_composite,
         calc_close_vol_rank_cov_5d,
         calc_dollar_vol_std_6d,
@@ -257,7 +257,7 @@ def _register_defaults() -> None:
         register_factor(primary_name, func, tags=["volume_price", "gtja"])
         register_factor(alias, func, tags=["volume_price", "gtja"])
 
-    from factors.earnings import calc_earnings_acceleration, calc_earnings_surprise
+    from factors.builtin.earnings import calc_earnings_acceleration, calc_earnings_surprise
 
     register_factor(
         "calc_earnings_surprise",
@@ -270,17 +270,17 @@ def _register_defaults() -> None:
         tags=["fundamental", "earnings"],
     )
 
-    from factors.value import calc_bp, calc_ep
+    from factors.builtin.value import calc_bp, calc_ep
 
     register_factor("calc_ep", calc_ep, tags=["fundamental", "value"])
     register_factor("calc_bp", calc_bp, tags=["fundamental", "value"])
 
-    from factors.liquidity import calc_amihud, calc_turnover
+    from factors.builtin.liquidity import calc_amihud, calc_turnover
 
     register_factor("calc_amihud", calc_amihud, tags=["liquidity"])
     register_factor("calc_turnover", calc_turnover, tags=["liquidity"])
 
-    from factors.quality import (
+    from factors.builtin.quality import (
         calc_cashflow_quality,
         calc_roe_level,
         calc_roe_stability,
@@ -295,7 +295,7 @@ def _register_defaults() -> None:
     )
 
     # --- 新增：GTJA 波动率（5） ---
-    from factors.volatility_gtja import (
+    from factors.builtin.volatility_gtja import (
         calc_atr_6d,
         calc_atr_12d,
         calc_cci_12d,
@@ -315,7 +315,7 @@ def _register_defaults() -> None:
         register_factor(alias, func, tags=["volatility", "gtja"])
 
     # --- 新增：GTJA 均值回归（4） ---
-    from factors.mean_reversion import (
+    from factors.builtin.mean_reversion import (
         calc_directional_balance_12d,
         calc_mfi_14d,
         calc_rsi_6d,
@@ -333,7 +333,7 @@ def _register_defaults() -> None:
         register_factor(alias, func, tags=["mean_reversion", "gtja"])
 
     # --- 新增：GTJA 趋势（3） ---
-    from factors.trend import calc_ma_slope_6d, calc_ma_slope_20d, calc_macd_like
+    from factors.builtin.trend import calc_ma_slope_6d, calc_ma_slope_20d, calc_macd_like
 
     trend_factors = [
         ("calc_ma_slope_6d", calc_ma_slope_6d, "gtja_21"),
@@ -345,7 +345,7 @@ def _register_defaults() -> None:
         register_factor(alias, func, tags=["trend", "gtja"])
 
     # --- 新增：GTJA VWAP（2） ---
-    from factors.vwap import calc_vwap_close_ratio, calc_vwap_deviation
+    from factors.builtin.vwap import calc_vwap_close_ratio, calc_vwap_deviation
 
     vwap_factors = [
         ("calc_vwap_close_ratio", calc_vwap_close_ratio, "gtja_120"),
@@ -356,7 +356,7 @@ def _register_defaults() -> None:
         register_factor(alias, func, tags=["vwap", "gtja"])
 
     # --- 新增：通用量价（4，带 window 参数） ---
-    from factors.volume_price import calc_atr, calc_obv, calc_rsi, calc_volume_ratio
+    from factors.builtin.volume_price import calc_atr, calc_obv, calc_rsi, calc_volume_ratio
 
     register_factor("calc_rsi", calc_rsi, tags=["volume_price"])
     register_factor("calc_obv", calc_obv, tags=["volume_price"])
@@ -364,12 +364,12 @@ def _register_defaults() -> None:
     register_factor("calc_atr", calc_atr, tags=["volume_price"])
 
     # --- 新增：HV（1，带 window 参数） ---
-    from factors.volatility import calc_hv
+    from factors.builtin.volatility import calc_hv
 
     register_factor("calc_hv", calc_hv, tags=["volatility"])
 
     # --- 新增：配对专用（5，kind="pair"） ---
-    from factors.cointegration import (
+    from factors.builtin.cointegration import (
         calc_coint_pvalue,
         calc_half_life,
         calc_spread,
