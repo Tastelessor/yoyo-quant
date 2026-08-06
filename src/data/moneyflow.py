@@ -4,6 +4,7 @@
 （ts_code 拆分、trade_date 转 date）+ parquet 缓存 + 面板化。
 金额单位保持万元（与 daily_basic 的 circ_mv 万元同单位，可直接相除）。
 """
+
 from __future__ import annotations
 
 import os
@@ -20,11 +21,24 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 #: moneyflow 接口金额/量字段（全部保留，因子层按需取列）
 _MF_COLS = [
-    "buy_sm_vol", "buy_sm_amount", "sell_sm_vol", "sell_sm_amount",
-    "buy_md_vol", "buy_md_amount", "sell_md_vol", "sell_md_amount",
-    "buy_lg_vol", "buy_lg_amount", "sell_lg_vol", "sell_lg_amount",
-    "buy_elg_vol", "buy_elg_amount", "sell_elg_vol", "sell_elg_amount",
-    "net_mf_vol", "net_mf_amount",
+    "buy_sm_vol",
+    "buy_sm_amount",
+    "sell_sm_vol",
+    "sell_sm_amount",
+    "buy_md_vol",
+    "buy_md_amount",
+    "sell_md_vol",
+    "sell_md_amount",
+    "buy_lg_vol",
+    "buy_lg_amount",
+    "sell_lg_vol",
+    "sell_lg_amount",
+    "buy_elg_vol",
+    "buy_elg_amount",
+    "sell_elg_vol",
+    "sell_elg_amount",
+    "net_mf_vol",
+    "net_mf_amount",
 ]
 
 _PROXY_URL = "https://quantdata888.duckdns.org"

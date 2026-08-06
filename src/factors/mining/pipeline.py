@@ -3,6 +3,7 @@
 数据准备（ohlcv + daily_basic + moneyflow → 宽表）→ 因子值 →
 全市场 + 分层 IC 验证 → 适用域判定。只读 parquet 产物，不 import data/ 与 analysis/。
 """
+
 from __future__ import annotations
 
 import json
@@ -25,9 +26,14 @@ def _domain_for(row: pd.Series, t_active: float, layer_t: float) -> str | list[s
     """适用域判定：全市场 t ≥ t_active → universal；否则列出显著层（Bonferroni）。"""
     if row["all_t_stat"] >= t_active:
         return "universal"
-    sig = [c.replace("_t_stat", "") for c in row.index
-           if c.endswith("_t_stat") and c != "all_t_stat"
-           and pd.notna(row[c]) and row[c] >= layer_t]
+    sig = [
+        c.replace("_t_stat", "")
+        for c in row.index
+        if c.endswith("_t_stat")
+        and c != "all_t_stat"
+        and pd.notna(row[c])
+        and row[c] >= layer_t
+    ]
     return sig if sig else "none"
 
 
@@ -102,7 +108,11 @@ def run_mining_screen(
         wide_with_factor[f] = factor_series.to_numpy()
         ic_table = compute_ic_by_layer(
             wide_with_factor,
-            f, fwd, layers, min_obs=min_obs, min_days=min_days,
+            f,
+            fwd,
+            layers,
+            min_obs=min_obs,
+            min_days=min_days,
         )
         flat: dict = {}
         for layer_name in ic_table.index:
@@ -112,9 +122,7 @@ def run_mining_screen(
             flat[f"{prefix}_n_days"] = ic_table.loc[layer_name, "n_days"]
         rows[f] = flat
     screen = pd.DataFrame.from_dict(rows, orient="index")
-    screen["domain"] = screen.apply(
-        lambda r: _domain_for(r, t_active, layer_t), axis=1
-    )
+    screen["domain"] = screen.apply(lambda r: _domain_for(r, t_active, layer_t), axis=1)
 
     summary = {f: {"domain": screen.loc[f, "domain"]} for f in factor_names}
 

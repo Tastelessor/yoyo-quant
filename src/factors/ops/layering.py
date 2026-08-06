@@ -7,6 +7,7 @@
 circ_mv / turnover_rate），与 ``factors.ops.evaluation`` 一样是
 纯函数、无状态、输出与输入逐行对齐。
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -74,7 +75,8 @@ def compute_size_liquidity_layers(
     if bins not in (2, 3):
         raise ValueError(f"bins 仅支持 2/3，收到 {bins!r}")
     _require_cols(
-        basic_df, ("date", "code", "circ_mv", "turnover_rate"),
+        basic_df,
+        ("date", "code", "circ_mv", "turnover_rate"),
         "compute_size_liquidity_layers",
     )
     size_labels = _SIZE_LABELS[:bins] if bins == 3 else ["small", "large"]
