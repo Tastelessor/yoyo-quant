@@ -4,6 +4,7 @@
 与各单因子回测对比（相同参数）→ 输出信号 / 对比表 / 净值图 / summary。
 只读 monitor 产物与 Phase A 产物，不重算 IC/状态/相关。
 """
+
 from __future__ import annotations
 
 import json

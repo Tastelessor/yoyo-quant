@@ -3,6 +3,7 @@
 把多个因子（通常是 Phase A 去冗余后的代表因子）合成单一信号：
 每日截面 rank 归一化 → 带符号权重加权平均 → 综合得分。
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -174,11 +175,15 @@ def compute_ic_weights(
         raise ValueError("factors 不能为空")
     means: dict[str, float] = {}
     for f in factors:
-        sub = state[
-            (state["factor"] == f)
-            & (state["fwd_window"] == fwd_window)
-            & (state["date"] <= as_of)
-        ]["ic"].dropna().tail(lookback)
+        sub = (
+            state[
+                (state["factor"] == f)
+                & (state["fwd_window"] == fwd_window)
+                & (state["date"] <= as_of)
+            ]["ic"]
+            .dropna()
+            .tail(lookback)
+        )
         means[f] = float(sub.mean()) if len(sub) > 0 else 0.0
     total = sum(abs(v) for v in means.values())
     if total == 0:
