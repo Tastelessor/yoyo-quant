@@ -126,3 +126,59 @@ def cluster_redundant(
             seen[lab] = len(seen)
         ids.append(seen[lab])
     return pd.DataFrame({"factor": factors, "cluster_id": ids})
+
+
+def select_representative(
+    cluster_df: pd.DataFrame,
+    stats: pd.DataFrame,
+    *,
+    by: str = "t_stat",
+) -> pd.DataFrame:
+    """每个簇选一个代表因子（簇内统计值最大者）。
+
+    Parameters
+    ----------
+    cluster_df : DataFrame
+        ``cluster_redundant`` 输出（factor / cluster_id）。
+    stats : DataFrame
+        每因子统计宽表，须含 ``factor`` 与 ``by`` 所需列（t_stat / ir）。
+    by : str
+        代表标准：``t_stat`` / ``ir`` / ``combined``（两维 rank 均值）。
+
+    Returns
+    -------
+    DataFrame
+        每簇一行：cluster_id / representative / members（字典序）/ member_count。
+    """
+    if by not in {"t_stat", "ir", "combined"}:
+        raise ValueError(f"by 必须为 t_stat/ir/combined，收到 {by!r}")
+    merged = cluster_df.merge(stats, on="factor", how="left")
+    if by == "combined":
+        if not {"t_stat", "ir"}.issubset(stats.columns):
+            raise ValueError("by='combined' 需要 stats 含 t_stat 与 ir 列")
+        merged["_score"] = (
+            merged["t_stat"].rank(ascending=True, na_option="bottom")
+            + merged["ir"].rank(ascending=True, na_option="bottom")
+        ) / 2.0
+        # rank(na_option="bottom") 会给 NaN 一个最大 rank；这里显式还原为 NaN，
+        # 使 sort_values 降序时（na_position="last"）缺失统计值的因子排最后、不参选
+        merged.loc[merged[["t_stat", "ir"]].isna().any(axis=1), "_score"] = np.nan
+    else:
+        if by not in stats.columns:
+            raise ValueError(f"stats 缺少列 {by!r}")
+        merged["_score"] = merged[by].rank(ascending=True, na_option="bottom")
+        merged.loc[merged[by].isna(), "_score"] = np.nan
+    # 得分最高者当选；并列时因子名字典序小者优先
+    merged = merged.sort_values(["_score", "factor"], ascending=[False, True])
+    rows = []
+    for cid, grp in merged.groupby("cluster_id", sort=True):
+        members = sorted(grp["factor"].tolist())
+        rows.append(
+            {
+                "cluster_id": int(cid),
+                "representative": grp["factor"].iloc[0],
+                "members": members,
+                "member_count": len(members),
+            }
+        )
+    return pd.DataFrame(rows)

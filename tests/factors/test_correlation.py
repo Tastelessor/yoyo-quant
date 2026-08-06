@@ -2,7 +2,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.ops.correlation import cluster_redundant, compute_corr_matrix
+from factors.ops.correlation import (
+    cluster_redundant,
+    compute_corr_matrix,
+    select_representative,
+)
 
 
 def _make_factor_df(seed=0, n_days=100, n_stocks=40):
@@ -136,3 +140,66 @@ def test_cluster_invalid_threshold():
     corr = _corr_of([("a", "b", 0.95)])
     with pytest.raises(ValueError, match="threshold"):
         cluster_redundant(corr, threshold=1.5)
+
+
+def _clusters():
+    return pd.DataFrame(
+        {"factor": ["a", "b", "c", "d"], "cluster_id": [0, 0, 1, 1]}
+    )
+
+
+def _stats():
+    return pd.DataFrame(
+        {
+            "factor": ["a", "b", "c", "d"],
+            "t_stat": [1.5, 3.2, 2.1, 0.5],
+            "ir": [0.20, 0.40, 0.30, 0.10],
+        }
+    )
+
+
+def test_representative_picks_highest_t():
+    out = select_representative(_clusters(), _stats(), by="t_stat")
+    assert out.loc[out["cluster_id"] == 0, "representative"].iloc[0] == "b"
+    assert out.loc[out["cluster_id"] == 1, "representative"].iloc[0] == "c"
+
+
+def test_representative_by_ir():
+    out = select_representative(_clusters(), _stats(), by="ir")
+    assert out.loc[out["cluster_id"] == 0, "representative"].iloc[0] == "b"
+
+
+def test_representative_combined():
+    # combined = (rank(t) + rank(ir)) / 2；簇 1 里 c 两维都高于 d
+    out = select_representative(_clusters(), _stats(), by="combined")
+    assert out.loc[out["cluster_id"] == 1, "representative"].iloc[0] == "c"
+
+
+def test_representative_members_sorted_and_count():
+    out = select_representative(_clusters(), _stats())
+    row0 = out.loc[out["cluster_id"] == 0].iloc[0]
+    assert row0["members"] == ["a", "b"]
+    assert row0["member_count"] == 2
+
+
+def test_representative_tie_break_lexicographic():
+    stats = pd.DataFrame(
+        {"factor": ["a", "b"], "t_stat": [2.0, 2.0], "ir": [0.1, 0.1]}
+    )
+    clusters = pd.DataFrame({"factor": ["a", "b"], "cluster_id": [0, 0]})
+    out = select_representative(clusters, stats, by="t_stat")
+    assert out.loc[0, "representative"] == "a"
+
+
+def test_representative_missing_stats_nan_last():
+    stats = pd.DataFrame(
+        {"factor": ["a", "b"], "t_stat": [2.0, np.nan], "ir": [0.1, 0.2]}
+    )
+    clusters = pd.DataFrame({"factor": ["a", "b"], "cluster_id": [0, 0]})
+    out = select_representative(clusters, stats, by="t_stat")
+    assert out.loc[0, "representative"] == "a"
+
+
+def test_representative_bad_by_raises():
+    with pytest.raises(ValueError, match="by"):
+        select_representative(_clusters(), _stats(), by="sharpe")
