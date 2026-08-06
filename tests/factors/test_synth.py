@@ -240,6 +240,47 @@ def test_ic_weights_lookback_trims_and_na_skips():
     assert abs(w["f"] - 1.0) < 1e-9
 
 
+def test_ic_weights_as_of_excludes_future():
+    # as_of 前（含当日）两因子 ic 均为 0.02；as_of 后 f1 升到 0.10。
+    # 若混入未来（回归成 date >= as_of），f1 均值被抬到 ~0.09 → w1≈0.82；
+    # 只用 as_of 之前 → 两因子均值同为 0.02 → 等权 0.5。
+    dates = pd.bdate_range("2024-01-01", periods=20)
+    as_of = dates[9]
+    rows = []
+    for d in dates:
+        ic1 = 0.02 if d <= as_of else 0.10
+        rows.append(
+            {
+                "date": d,
+                "factor": "f1",
+                "fwd_window": 5,
+                "ic": ic1,
+                "rolling_ic": 0.02,
+                "rolling_ir": 0.4,
+                "t_stat": 2.0,
+                "state": "active",
+                "sustain_days": 10,
+            }
+        )
+        rows.append(
+            {
+                "date": d,
+                "factor": "f2",
+                "fwd_window": 5,
+                "ic": 0.02,
+                "rolling_ic": 0.02,
+                "rolling_ir": 0.4,
+                "t_stat": 2.0,
+                "state": "active",
+                "sustain_days": 10,
+            }
+        )
+    state = pd.DataFrame(rows)
+    w = compute_ic_weights(state, ["f1", "f2"], as_of=as_of)
+    assert abs(w["f1"] - 0.5) < 1e-9
+    assert abs(w["f2"] - 0.5) < 1e-9
+
+
 def test_ic_weights_all_invalid_falls_back_to_equal():
     state = pd.DataFrame(
         {
