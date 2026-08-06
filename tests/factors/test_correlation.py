@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.ops.correlation import compute_corr_matrix
+from factors.ops.correlation import cluster_redundant, compute_corr_matrix
 
 
 def _make_factor_df(seed=0, n_days=100, n_stocks=40):
@@ -80,3 +80,59 @@ def test_corr_matrix_bad_args_raise():
         compute_corr_matrix(df, ["f1", "f2"], agg="max")
     with pytest.raises(ValueError, match="window"):
         compute_corr_matrix(df, ["f1", "f2"], window=0)
+
+
+def _corr_of(pairs, factors=("a", "b", "c")):
+    # 由 (f1, f2, rho) 列表构造对称矩阵，未给的对为 0
+    mat = pd.DataFrame(np.zeros((3, 3)), index=list(factors), columns=list(factors))
+    for f1, f2, r in pairs:
+        mat.loc[f1, f2] = mat.loc[f2, f1] = r
+    np.fill_diagonal(mat.to_numpy(), 1.0)
+    return mat
+
+
+def test_cluster_high_corr_grouped():
+    corr = _corr_of([("a", "b", 0.95), ("a", "c", 0.1), ("b", "c", 0.05)])
+    out = cluster_redundant(corr, threshold=0.7)
+    assert out.loc[out["factor"] == "a", "cluster_id"].iloc[0] == out.loc[
+        out["factor"] == "b", "cluster_id"
+    ].iloc[0]
+    assert out.loc[out["factor"] == "c", "cluster_id"].iloc[0] != out.loc[
+        out["factor"] == "a", "cluster_id"
+    ].iloc[0]
+
+
+def test_cluster_all_independent():
+    corr = pd.DataFrame(np.eye(3), index=["a", "b", "c"], columns=["a", "b", "c"])
+    out = cluster_redundant(corr, threshold=0.7)
+    assert out["cluster_id"].nunique() == 3
+
+
+def test_cluster_threshold_monotonic():
+    # 仅 a/b 两因子：0.95 > 0.7 → 一簇；0.95 < 0.98 → 两簇
+    corr = pd.DataFrame(
+        [[1.0, 0.95], [0.95, 1.0]], index=["a", "b"], columns=["a", "b"]
+    )
+    loose = cluster_redundant(corr, threshold=0.7)
+    strict = cluster_redundant(corr, threshold=0.98)
+    assert loose["cluster_id"].nunique() == 1
+    assert strict["cluster_id"].nunique() == 2
+
+
+def test_cluster_single_factor():
+    corr = pd.DataFrame([[1.0]], index=["a"], columns=["a"])
+    out = cluster_redundant(corr, threshold=0.7)
+    assert out.to_dict("records") == [{"factor": "a", "cluster_id": 0}]
+
+
+def test_cluster_nan_safe():
+    corr = _corr_of([("a", "b", 0.95)])
+    corr.loc["a", "c"] = corr.loc["c", "a"] = np.nan
+    out = cluster_redundant(corr, threshold=0.7)
+    assert len(out) == 3
+
+
+def test_cluster_invalid_threshold():
+    corr = _corr_of([("a", "b", 0.95)])
+    with pytest.raises(ValueError, match="threshold"):
+        cluster_redundant(corr, threshold=1.5)

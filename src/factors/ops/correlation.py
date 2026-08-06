@@ -74,3 +74,55 @@ def compute_corr_matrix(
                 mat.loc[f1, f2] = mat.loc[f2, f1] = val
     np.fill_diagonal(mat.to_numpy(), 1.0)
     return mat
+
+
+def cluster_redundant(
+    corr_matrix: pd.DataFrame,
+    *,
+    threshold: float = 0.7,
+    linkage_method: str = "ward",
+) -> pd.DataFrame:
+    """按相关阈值对因子层次聚类，返回每因子所属簇。
+
+    Parameters
+    ----------
+    corr_matrix : DataFrame
+        ``compute_corr_matrix`` 的对称输出。
+    threshold : float
+        冗余判定阈值（0 < t < 1）；|ρ| 高于它视为同一信号族。
+    linkage_method : str
+        scipy linkage 方法，默认 ``ward``。
+
+    Returns
+    -------
+    DataFrame
+        每因子一行：``factor`` / ``cluster_id``（0 起整数，按因子首次出现编号）。
+
+    Notes
+    -----
+    距离定义为 1 - |ρ|；剪枝阈值为距离空间的 1 - threshold（ward 合并代价
+    不等于成对 ρ 上限，簇语义以测试锚点为准）。矩阵中的 NaN 距离按 1.0
+    处理（视为不相关）。
+    """
+    if not 0.0 < threshold < 1.0:
+        raise ValueError(f"threshold 必须在 (0, 1) 内，收到 {threshold!r}")
+    from scipy.cluster.hierarchy import fcluster, linkage
+    from scipy.spatial.distance import squareform
+
+    factors = list(corr_matrix.index)
+    mat = corr_matrix.reindex(index=factors, columns=factors)
+    d = (1.0 - mat.abs()).to_numpy(dtype=float)
+    d = np.where(np.isnan(d), 1.0, d)
+    np.fill_diagonal(d, 0.0)
+    if len(factors) == 1:
+        return pd.DataFrame({"factor": factors, "cluster_id": [0]})
+    linkage_matrix = linkage(squareform(d, checks=False), method=linkage_method)
+    labels = fcluster(linkage_matrix, t=1.0 - threshold, criterion="distance")  # 1..k
+    # 重编号为 0..k-1，按因子首次出现顺序
+    seen: dict[int, int] = {}
+    ids = []
+    for lab in labels:
+        if lab not in seen:
+            seen[lab] = len(seen)
+        ids.append(seen[lab])
+    return pd.DataFrame({"factor": factors, "cluster_id": ids})
