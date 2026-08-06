@@ -54,7 +54,8 @@ data → factors → strategies → portfolio → risk → backtest
         analysis/factor_clean（本设计新增，Phase A/B/C 编排层）
 ```
 
-- 本设计全部落在 **analysis 层**，消费已有纯函数与长表，**不新增数据源、不改动任何模块契约**。
+- 本设计的**操作能力**落在 `factors/ops/`（因子清洗属于对因子的操作），**业务编排**落在 analysis 层（沿用 factor_monitor 的定位）；**不新增数据源**。
+- 前置：**Phase 0 先重构 `src/factors/` 目录分层**（见 §3.4），否则 A/B/C 的新代码又要再挪一次。
 - 与 `factor_monitor` 的关系：monitor 输出 state 长表（`(date, factor, fwd_window, ic, rolling_ic, rolling_ir, t_stat, state, sustain_days)`）与因子值缓存，本设计**只读**这些产物做二次加工。
 
 ### 3.2 依赖与复用（新增代码只依赖这些既有模块）
@@ -63,17 +64,49 @@ data → factors → strategies → portfolio → risk → backtest
 |------|------|------|
 | 因子动态发现 | `factors.registry.list_factors(kind="single")` | 枚举候选因子（含跳过缺列机制） |
 | 因子值计算 + 磁盘缓存 | `factors.registry.run_factor` | 取因子值序列（算截面相关用） |
-| IC/滚动统计 | `factors.evaluation.compute_ic / compute_rolling_*` | 单因子统计（已交付） |
+| IC/滚动统计 | `factors.ops.evaluation.compute_ic / compute_rolling_*` | 单因子统计（已交付） |
 | 市场状态标注 | data 层 `limit_up / limit_down / is_suspended` | OOS 组合验证的可交易性约束 |
 | train/test 窗口 | `backtest.walk_forward.generate_windows` | Phase B 的滑窗切分（**仅复用窗口生成**，不与回测逻辑耦合） |
 | 绘图 | `analysis.plot`（既有 plot_sweep_heatmap / plot_factor_health_heatmap 风格） | 相关矩阵热力图、聚类树状图 |
 
-### 3.3 边界（不做什么）
+### 3.3 边界（不做什么 / 允许什么）
 
 - 不引入新数据（不需要新增因子、基本面、分钟数据）
-- 不做 PCA / 黑箱正交化主成分——保持因子可解释、可审计（用户可理解自己用什么）
-- 不动 `factors/` 与 `strategies/` 的既有契约；Phase C 只做"合成信号"输出，接入策略层由既有 `Strategy` 框架承接
+- **允许** PCA / 正交化主成分——约束条件是输入因子须有合理的经济/金融解释，正交化仅作组合技术；默认路径仍是可解释的聚类去冗余（§4），正交化作为可选增强
+- 不改 `strategies/` 的既有契约；Phase C 只做"合成信号"输出，接入策略层由既有 `Strategy` 框架承接
 - 不做实盘执行（execution 模块仍在项目路线图）
+
+### 3.4 Phase 0：src/factors/ 目录分层重构
+
+**动机**：factors 目录扁平化，因子 / 算子 / 元功能（评估、中性化、缓存、调度）混杂同一层。重构后每层只依赖下层，可读性与模块边界清晰，且 Phase A/B/C 的清洗操作有明确归属。
+
+**目标结构**：
+
+```
+src/factors/
+├── __init__.py          # 顶层导出（保持旧 import 兼容）
+├── registry.py          # 注册表 + 动态发现 + run_factor（调度入口，留顶层）
+├── operators.py         # GTJA 算子原语（留顶层，被所有因子依赖）
+├── builtin/             # 因子实现（15 个文件，只依赖 operators + pandas；
+│   │                    #   命名对齐 strategies/builtin/ 先例）
+│   ├── momentum.py  volume_price_gtja.py  volatility_gtja.py
+│   ├── mean_reversion.py  trend.py  vwap.py  volatility.py  volume_price.py
+│   └── cointegration.py  earnings.py  value.py  quality.py  liquidity.py
+└── ops/                 # 对因子的操作（依赖 registry/builtin/evaluation）
+    ├── evaluation.py    # IC/IR/滚动统计/分层（现状迁入）
+    ├── neutralize.py    # 截面中性化（现状迁入）
+    ├── cache.py         # 磁盘缓存（现状迁入）
+    ├── correlation.py   # Phase A：相关性矩阵 + 聚类去冗余（新增）
+    ├── oos.py           # Phase B：walk-forward OOS + bootstrap 零分布（新增）
+    └── synth.py         # Phase C：合成信号（新增）
+```
+
+**影响面（已查耦合）**：
+- 外部 import：17 个文件（strategies×16、yq×2、analysis×2、context×1、backtest×1）依赖 `factors.*` 各模块；`registry._register_defaults` 在函数内延迟 import 15 个因子文件
+- 测试：`tests/factors/` 16 个测试文件 + `tests/test_evaluation_rolling.py` 的 import 路径需同步
+- 兼容策略：`__init__.py` 保持顶层导出（如 `from factors.ops.evaluation import compute_ic`），外部旧 import 不破；新代码按新分层 import
+
+**验收**：全部旧 import 路径在新结构下可用；`import factors` 与 `from factors import compute_ic` 等旧写法不报错；全量测试通过；registry 动态发现数量不变（93 条目）。
 
 ## 4. Phase A：因子相关性分析 + 去冗余
 
@@ -90,14 +123,15 @@ data → factors → strategies → portfolio → risk → backtest
 
 - 滚动窗口：**60 个交易日**（与 monitor 一致），相关结构会漂移，须滚动更新，不能算一次用三年
 - 分析对象：仅 **active / decaying** 因子（dead/reverse 因子已被判无效，不参与组合）
-- 相关阈值：默认 **|ρ| > 0.7 判定冗余**（待用户确认，见 §9）
+- 相关阈值：默认 **|ρ| > 0.7 判定冗余**（可在 configs/factor_clean.yaml 调整，见 §9）
 
-### 4.3 去冗余算法（可解释优先）
+### 4.3 去冗余算法（可解释优先，正交化为可选增强）
 
 1. 对 active/decaying 因子两两算滚动因子值截面相关 → 相关矩阵
 2. |ρ| > 阈值 → 连边 → 层次聚类（agglomerative，ward 距离）
-3. 每簇只保留 **t_stat / IR 最高的代表因子**，其余标记为"冗余别名"
+3. 每簇只保留**代表因子**（代表标准可配置：t_stat / IR / 综合），其余标记为"冗余别名"
 4. 输出代表因子清单 + 被淘汰因子的归属簇（可审计：为什么它被淘汰，跟谁是同一簇）
+5. 可选增强：对去冗余后的代表因子做 PCA/正交化合成（前提：输入因子均有经济解释，见 §3.3）
 
 ### 4.4 Phase A 输出与验收
 
@@ -149,7 +183,7 @@ train 期（前 6-12 个月）               test 期（未来 1-3 个月）
 
 ## 6. Phase C：合成信号接入策略层
 
-- 去冗余后的代表因子（Phase A 输出）按**等权**或 **IC 加权**合成单一信号（先等权起步，简单可解释）
+- 去冗余后的代表因子（Phase A 输出）按**等权**或 **IC 加权**合成单一信号（默认等权，可在 configs/factor_clean.yaml 调整，见 §9）；可选增强：正交化加权（见 §3.3）
 - 合成信号输出为 strategies 模块输入格式（date, code, signal, confidence），由既有 `Strategy` 框架/组合器承接
 - 回测验证：接入既有 `backtest` 管道（data → factors → strategies → portfolio → risk → backtest），与"单因子最佳"对比——**验证组合是否真正优于单因子**（若组合 Sharpe 不比最佳单因子高，说明冗余没去干净或合成无效）
 - 注意：Phase C 不改变 strategies/portfolio 模块本身，只新增"因子 → 合成信号"的转换层
@@ -160,28 +194,46 @@ train 期（前 6-12 个月）               test 期（未来 1-3 个月）
 
 > 从"80 个因子逐个看死活"升级为"**2-3 个独立信号维度 + 有据可依的选择机制 + OOS 验证过的合成信号**"，回答"我到底能用什么、为什么能用"。
 
-## 8. 实施节奏建议（质量优先）
+## 8. 实施节奏（敏捷 + TDD，阶段交付）
 
 | Phase | 内容 | 相对工作量 | 前置 |
 |-------|------|-----------|------|
-| A | 相关性矩阵 + 聚类去冗余 | 小 | 无（state 长表已就绪） |
-| B | walk-forward OOS + bootstrap | 中 | A（选因子需去冗余后的候选集） |
-| C | 合成信号 + 回测对比 | 中 | A + B |
+| 0 | factors 目录分层重构（§3.4） | 中 | 无 |
+| A | 相关性矩阵 + 聚类去冗余（`factors/ops/correlation.py`） | 小 | 0（新代码直接落在新分层） |
+| B | walk-forward OOS + bootstrap（`factors/ops/oos.py`） | 中 | A（选因子需去冗余后的候选集） |
+| C | 合成信号 + 回测对比（`factors/ops/synth.py`） | 中 | A + B |
 
-- 每个 Phase 独立交付、独立验收，可暂停
+- **ABC 全做**（用户已确认）；每个 Phase 独立交付、独立验收，可暂停
 - 每个 Phase 按项目规范 TDD：先写测试 → 最小实现 → 跑绿 → 更新契约文档（data-schemas / project-plan / history）
-- Phase B 的 test 期长度与 Phase A 的相关阈值是两个影响结果的关键参数，实施前先定（见 §9）
+- 每个 Phase 的交付标准在实现计划（factor-clean-plan.md）中逐 task 写明：功能、测试、验收命令
 
-## 9. 待用户决策的开放问题
+## 9. 配置（configs/factor_clean.yaml，Q1-Q4 默认值）
 
-| # | 问题 | 选项 | 影响 |
-|---|------|------|------|
-| Q1 | 去冗余相关阈值 | 0.7（默认）/ 0.5（更严格） | 阈值越低，去冗余越激进，保留因子越少 |
-| Q2 | OOS test 期长度 | 1 个月 / 3 个月（贴合日频换仓节奏） | test 期越短，样本越多但噪声越大 |
-| Q3 | 去冗余代表选择标准 | t_stat / IR / 两者综合 | 决定簇内谁是代表 |
-| Q4 | 合成信号加权 | 等权（默认）/ IC 加权 | 等权简单稳健；IC 加权理论更优但更易过拟合 |
-| Q5 | 实施顺序与范围 | A → B → C 全做 / 只做 A / 先 A+B | 用户按质量优先原则分步确认 |
+开放问题收敛为**带默认值的配置项**，用户可随时改 yaml 调整，无需改代码：
+
+```yaml
+# Phase A 相关性去冗余（对应 Q1/Q3）
+corr_threshold: 0.7        # 去冗余相关阈值（调低则更激进，保留因子更少）
+corr_window: 60            # 相关滚动窗口（交易日，与 monitor 一致）
+cluster_linkage: ward      # 层次聚类连接方式
+representative_by: t_stat  # 簇代表选择标准：t_stat | ir | combined
+
+# Phase B OOS 验证（对应 Q2）
+oos_train_months: 12       # train 期长度（月）
+oos_test_months: 1         # test 期长度（月，贴合日频换仓节奏）
+top_k: 5                   # 每期从去冗余候选集中选入因子数
+bootstrap_iters: 200       # 零分布模拟次数（多重检验修正）
+
+# Phase C 合成（对应 Q4）
+synth_weighting: equal      # equal | ic_weighted（IC 加权更优但更易过拟合）
+
+# 通用
+exclude_untradable: true   # 沿用监控默认：排除涨跌停/停牌日
+```
+
+- 配置加载复用 `configs/loader.py` 的既有机制（load_config + 校验）
+- Q5（范围）已定：**ABC 全做**，顺序 Phase 0 → A → B → C
 
 ---
 
-*本设计为讨论稿，未实施。批准后按项目规范（CLAUDE.md：TDD、模块解耦、重构五步）拆分为具体实现计划，更新 data-schemas.md / project-plan.md / history.md。*
+*本设计为讨论稿 v2，已吸收审阅意见（factors 分层重构、PCA 允许、Q1-4 配置化、ABC 全做）。批准后按项目规范（CLAUDE.md：TDD、模块解耦、重构五步）拆分为具体实现计划（factor-clean-plan.md），更新 data-schemas.md / project-plan.md / history.md。*
