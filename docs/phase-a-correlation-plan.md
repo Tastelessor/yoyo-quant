@@ -878,6 +878,8 @@ def _load_state(state_path: Path) -> pd.DataFrame:
     df = pd.read_parquet(path)
     if not set(STATE_COLS).issubset(df.columns):
         raise ValueError(f"state.parquet 缺少列，需要 {STATE_COLS}")
+    # parquet round-trip 后 date 可能为 object(str)，统一规范化（幂等）
+    df["date"] = pd.to_datetime(df["date"])
     return df
 
 
@@ -950,7 +952,8 @@ def run_phase_a(
     corr = compute_corr_matrix(factor_df, keep, window=corr_window)
     clusters = cluster_redundant(corr, threshold=corr_threshold, linkage_method=cluster_linkage)
     latest = state[(state["date"] == as_of) & (state["fwd_window"] == fwd_window)]
-    stats = latest[["factor", "t_stat", "ir"]].drop_duplicates("factor")
+    # 注意：STATE_COLS 无 ir 列，IR 度量在 rolling_ir → 重命名后喂给 select_representative
+    stats = latest.rename(columns={"rolling_ir": "ir"})[["factor", "t_stat", "ir"]].drop_duplicates("factor")
     representatives = select_representative(clusters, stats, by=representative_by)
 
     result = {
@@ -979,9 +982,11 @@ def run_phase_a(
         from analysis.plot import plot_cluster_dendrogram, plot_corr_matrix
 
         plot_corr_matrix(corr).savefig(out / "corr_heatmap.png", dpi=110, bbox_inches="tight")
-        plot_cluster_dendrogram(corr, threshold=corr_threshold).savefig(
-            out / "dendrogram.png", dpi=110, bbox_inches="tight"
-        )
+        # 单因子（1×1）无聚类树：scipy linkage 抛错，跳过 dendrogram（heatmap 保留）
+        if len(corr) > 1:
+            plot_cluster_dendrogram(corr, threshold=corr_threshold).savefig(
+                out / "dendrogram.png", dpi=110, bbox_inches="tight"
+            )
     return result
 ```
 
