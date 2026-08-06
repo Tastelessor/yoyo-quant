@@ -1646,6 +1646,6 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
   - calc_close_vol_rank_cov_5d：-46.8% / -19.7% / -0.4466 / 45.8% / 1496
   - calc_high_vol_rank_corr_3d：+17.0% / +5.59% / 0.2242 / 52.5% / 1459
   - calc_vol_rank_intraday_corr_6d：+39.9% / +12.4% / **0.4919** / 51.7% / 1479
-- **信号核对**：synth_signals 3,540,684 行（= 726 交易日 × 4999 股全量行数）；signal 分布 `{0: 3,529,748, 1: 7,060, -1: 3,876}`——买入 7,060 = 10 只 × 706 个持有日（top_n=10 逐期逐日持有）；卖出 3,876 = 671 日 × 5 只（bottom_n=5）＋ 35 个再平衡日 × 15 只（5 bottom + 10 前持仓退出），与 rebalance 20 / top_n 10 / bottom_n 5 精确匹配
+- **信号核对**：synth_signals 3,540,684 行（= ohlcv 全量行数，**非满交叉积**——726 交易日 × 4999 股的满交叉积为 3,629,274，差 88,590 系部分股票上市晚/退市/缺数所致，与 Phase 24 记录的 ohlcv 全量行数一致）；signal 分布 `{0: 3,529,748, 1: 7,060, -1: 3,876}`（3,529,748 + 7,060 + 3,876 = 3,540,684 自洽）——买入 7,060 = 10 只 × 706 个持有日（top_n=10 逐期逐日持有）；卖出 3,876 = 671 日 × 5 只（bottom_n=5）＋ 35 个再平衡日 × 15 只（5 bottom + 10 前持仓退出），与 rebalance 20 / top_n 10 / bottom_n 5 精确匹配
 - **如实记录（验收未达标）**：等权合成 Sharpe **0.085 显著低于**最佳单因子 calc_vol_rank_intraday_corr_6d（0.492），也低于 calc_high_vol_rank_corr_3d（0.224）；合成收益仅 +1.6% vs 最佳单因子 +39.9%。合成把 4 个代表等权混合后信号强度被稀释——代表因子（Phase A 按**相关冗余**去重）在**选股收益**上并不均衡：强正贡献（intraday_corr_6d、high_vol_rank_corr_3d）被弱/负贡献（atr_12d、close_vol_rank_cov_5d）中和。分散度角度：synth trade_count 1,318 与单因子 1,400-1,500 接近，未见换仓显著差异。**按计划约定不擅自调参数**（IC 加权、rebalance、top_n 均不动），如实记录后由用户裁决（候选方向：改 `--weighting ic_weighted` 重跑、核查合成信号/回测管道、或接受"合成劣于单因子"结论）
 - **产出**：`data/audit/factor_clean_c/`（summary.json + backtest_compare.parquet + synth_signals.parquet + equity_compare.png + nohup.log）
