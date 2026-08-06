@@ -17,3 +17,9 @@ synth_rebalance: 20      # 信号再平衡周期（交易日）
 synth_top_n: 10          # 每期买入股票数
 synth_bottom_n: 5        # 每期卖出股票数
 ic_lookback: 60          # IC 加权权重评估窗口（交易日）
+# Phase 挖掘（分层验证）
+mining_t_active: 2.0     # 全市场显著阈值（与 monitor 一致）
+mining_layer_t: 2.81     # 层显著阈值（Bonferroni 校正 n=10, α=0.05, 双侧）
+mining_min_days: 10      # 层有效天数下限
+mining_fwd_window: 5     # forward return 窗口（交易日）
+mining_min_obs: 5        # 单日单层截面样本下限

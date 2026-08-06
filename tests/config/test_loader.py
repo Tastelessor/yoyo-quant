@@ -29,8 +29,16 @@ def valid_config():
         "strategies": {
             "combiner": {"type": "weighted_vote", "threshold": 0.0},
             "rules": [
-                {"name": "mean_reversion", "params": {"window": 20, "num_std": 2.0}, "weight": 0.5},
-                {"name": "rsi_reversal", "params": {"window": 14, "oversold": 30, "overbought": 70}, "weight": 0.5},
+                {
+                    "name": "mean_reversion",
+                    "params": {"window": 20, "num_std": 2.0},
+                    "weight": 0.5,
+                },
+                {
+                    "name": "rsi_reversal",
+                    "params": {"window": 14, "oversold": 30, "overbought": 70},
+                    "weight": 0.5,
+                },
             ],
         },
         "risk": {
@@ -71,7 +79,10 @@ class TestLoadConfig:
                 load_config(Path(f.name))
 
     def test_missing_risk_section(self):
-        cfg = {"portfolio": {}, "strategies": {"combiner": {"type": "weighted_vote"}, "rules": []}}
+        cfg = {
+            "portfolio": {},
+            "strategies": {"combiner": {"type": "weighted_vote"}, "rules": []},
+        }
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(cfg, f)
             f.flush()
@@ -94,7 +105,9 @@ class TestBuildStrategies:
 
     def test_single_strategy_no_combiner(self):
         cfg = {
-            "rules": [{"name": "mean_reversion", "params": {"window": 20}, "weight": 1.0}],
+            "rules": [
+                {"name": "mean_reversion", "params": {"window": 20}, "weight": 1.0}
+            ],
         }
         result = build_strategies(cfg)
         assert isinstance(result, Strategy)
@@ -318,7 +331,12 @@ class TestBuildStockSelector:
         assert fn is not None
 
     def test_min_pass_count_passthrough(self):
-        cfg = {"stock_selector": {"factors": ["calc_money_flow_6d"], "min_pass_count": 3}}
+        cfg = {
+            "stock_selector": {
+                "factors": ["calc_money_flow_6d"],
+                "min_pass_count": 3,
+            }
+        }
         fn = build_stock_selector(cfg)
         assert fn is not None
 
@@ -380,5 +398,16 @@ class TestLoadFactorCleanConfig:
         assert cfg["synth_rebalance"] == 20  # 缺省合并
         assert cfg["synth_top_n"] == 3
         p.write_text("synth_weighting: bogus\n", encoding="utf-8")
+        with pytest.raises(ValueError):
+            load_factor_clean_config(p)
+
+    def test_load_factor_clean_config_mining_defaults_and_validation(self, tmp_path):
+        p = tmp_path / "factor_clean.yaml"
+        p.write_text("mining_layer_t: 3.0\nmining_min_days: 20\n", encoding="utf-8")
+        cfg = load_factor_clean_config(p)
+        assert cfg["mining_layer_t"] == 3.0
+        assert cfg["mining_min_days"] == 20
+        assert cfg["mining_t_active"] == 2.0  # 缺省合并
+        p.write_text("mining_min_days: 0\n", encoding="utf-8")
         with pytest.raises(ValueError):
             load_factor_clean_config(p)

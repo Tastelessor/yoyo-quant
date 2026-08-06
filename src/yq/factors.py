@@ -18,6 +18,7 @@ from analysis.factor_oos import run_phase_b
 from analysis.factor_synth import run_phase_c
 from config.loader import load_factor_clean_config
 from data.storage import load_parquet, save_parquet
+from factors.mining.pipeline import run_mining_screen
 from factors.ops.evaluation import DEFAULT_WINDOWS, evaluate_factors
 from factors.registry import get_spec, list_factors, run_factor
 from yq.monitor import build_status_table, render_changes
@@ -614,6 +615,62 @@ def factor_clean_c(
         typer.echo(
             f"合成 > 最佳单因子: {'是' if summary['synth_beats_best_single'] else '否'}"
         )
+        if output_dir is not None:
+            typer.echo(f"输出: {output_dir}")
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        typer.echo(f"错误: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+
+@factor_app.command("mining-screen")
+def factor_mining_screen(
+    data: Path = typer.Option(..., "--data", help="全市场行情 parquet"),
+    basic: Path = typer.Option(
+        ..., "--basic", help="daily_basic parquet（circ_mv/turnover_rate）"
+    ),
+    moneyflow: Path = typer.Option(..., "--moneyflow", help="moneyflow 长表 parquet"),
+    factors: str | None = typer.Option(
+        None, "--factors", help="待评估因子（逗号分隔），缺省资金流三因子"
+    ),
+    config: Path | None = typer.Option(None, "--config", help="factor_clean.yaml"),
+    fwd_window: int | None = typer.Option(
+        None, "--fwd-window", help="forward return 窗口"
+    ),
+    output_dir: Path | None = typer.Option(None, "--output-dir", help="输出目录"),
+    json_out: bool = typer.Option(False, "--json", help="JSON 输出 summary"),
+):
+    """因子挖掘分层验证：全市场 + 9 层 IC + 适用域判定。"""
+    try:
+        cfg = load_factor_clean_config(config) if config is not None else {}
+        fwd_window = fwd_window if fwd_window is not None else int(
+            cfg.get("mining_fwd_window", 5)
+        )
+        factor_list: list[str] | None = (
+            [s.strip() for s in factors.split(",") if s.strip()]
+            if factors is not None else None
+        )
+        out = run_mining_screen(
+            ohlcv_path=data,
+            basic_path=basic,
+            moneyflow_path=moneyflow,
+            factors=factor_list,
+            fwd_window=fwd_window,
+            min_obs=int(cfg.get("mining_min_obs", 5)),
+            min_days=int(cfg.get("mining_min_days", 10)),
+            t_active=float(cfg.get("mining_t_active", 2.0)),
+            layer_t=float(cfg.get("mining_layer_t", 2.81)),
+            output_dir=output_dir,
+        )
+        summary = out["summary"]
+        if json_out:
+            typer.echo(
+                json.dumps(summary, ensure_ascii=False, indent=2, default=str)
+            )
+            return
+        for fname, meta in summary.items():
+            dom = meta["domain"]
+            dom_str = dom if isinstance(dom, str) else ",".join(dom)
+            typer.echo(f"{fname}: domain={dom_str}")
         if output_dir is not None:
             typer.echo(f"输出: {output_dir}")
     except (ValueError, KeyError, FileNotFoundError) as exc:
