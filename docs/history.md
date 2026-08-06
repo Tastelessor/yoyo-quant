@@ -1557,3 +1557,17 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 - 全量单测 **1091 passed**（Phase A 新增 33：correlation 19 + corr_plot 4 + factor_clean 4 + loader 3 + cli 3），ruff 干净（存量 27 处非本任务文件不碰；Task 6 的 F821×3 为 ruff 对 .yaml 的误报，检查时排除即可）
 - commits：`8d5c3fd`(相关矩阵)→`bf0794d`(聚类)→`a7615b6`(代表)→`1cef7b3`(绘图)→`72195fa`(编排)→`4adaa8e`(单因子守卫)→`e4e9cc4`(CLI+配置)→`09c3a50`(clusters 形状裁定修正计划)
 - 真实验证（真实 state.parquet + 全市场 ohlcv 跑 `yq factor clean-a`、核验收敛结果、PNG 落盘）由 Task 8 执行，结果在本节补记
+
+### Task 8：全市场真实验证（2026-08-06）
+
+- **命令**：`yq factor clean-a --state data/audit/factor_monitor_full/state.parquet --data data/clean/full_market_ohlcv.parquet --output-dir data/audit/factor_clean_a --json`（exit 0，skipped 空）
+- **结果**：候选 13 个因子（2026-07-29 最新 active/decaying）→ 阈值 0.7 下 **4 簇 / 4 个代表**：
+  - 簇 0 ATR 族（5 成员）：calc_atr / calc_atr_6d / calc_atr_12d / gtja_161 / gtja_175，两两相关 **0.99-1.00** → 代表 calc_atr_12d（去冗余直接证明：5 个候选收敛 1 代表）
+  - 簇 1（4 成员）：calc_close_vol_rank_cov_5d / calc_vwap_vol_rank_corr_5d / gtja_99 / gtja_90，相关 **0.80** → 代表 calc_close_vol_rank_cov_5d
+  - 簇 2（2 成员）：calc_high_vol_rank_corr_3d / gtja_32（与簇 1 相关 0.53-0.68）→ 代表 calc_high_vol_rank_corr_3d
+  - 簇 3（2 成员）：calc_vol_rank_intraday_corr_6d / gtja_1（与簇 1 相关 0.28-0.43）→ 代表 calc_vol_rank_intraday_corr_6d
+- **对照设计预期**（§4.4"4 个 GTJA 相关类收敛到 ≤2 代表"）：实际 **3 个代表**——设计文档"本质同一信号"假设过强；最近 60 日窗口下 4 类两两截面 spearman 仅 0.28-0.80，仅 close_vol_rank_cov_5d↔vwap_vol_rank_corr_5d（0.80）达 0.7 共线。monitor 的 t 值同步 ≠ 因子值共线（t 同步反映同信号族，非同向量）
+- **阈值敏感性**：threshold=0.6 → high_vol_rank_corr_3d(0.68) 并入簇 1 → 3 簇；0.5 → close↔high(0.53) 并入 → 2 簇；0.4 → intraday(0.43) 并入 → 1 个量价大簇（4 个 GTJA 类收敛 1 代表）
+- **产出**：`data/audit/factor_clean_a/`（corr_matrix.parquet + corr_heatmap.png + dendrogram.png + representatives.json + stderr.log）
+- **阈值决策**：按计划约定不擅自调——0.7 为设计默认，事实是 4 个 GTJA 类两两相关 0.28-0.80；待用户裁决是否调整 `configs/factor_clean.yaml` 的 corr_threshold（见会话 ask 结果）
+- **阈值决策（用户裁决 2026-08-06）**：**保持 corr_threshold=0.7 不变**——4 个 GTJA 类中仅 close_vol_rank_cov_5d↔vwap_vol_rank_corr_5d（0.80）达共线，high(0.53-0.68)/intraday(0.28-0.43) 是真实独立维度；去冗余的诚实结果是 **4 个代表**（ATR 族 1 + 量价族 3），组合时按 4 维度分散

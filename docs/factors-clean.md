@@ -233,7 +233,7 @@ synth_weighting: equal      # equal | ic_weighted（IC 加权更优但更易过�
 exclude_untradable: true   # 沿用监控默认：排除涨跌停/停牌日
 ```
 
-- 配置加载复用 `configs/loader.py` 的既有机制（load_config + 校验）
+- 配置加载：`src/config/loader.py` 新增 `load_factor_clean_config`（独立于 load_config——后者强校验 strategies/risk 段，factor_clean.yaml 是独立清洗配置；缺省合并 + 参数校验，见 Phase A 实现）
 - Q5（范围）已定：**ABC 全做**，顺序 Phase 0 → A → B → C
 
 ---
