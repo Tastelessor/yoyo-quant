@@ -1634,3 +1634,18 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 - commits（`e2f8c22..HEAD`，7 个）：`260c68d`(合成得分)→`1ae6feb`(信号)→`3a38659`(退出测试)→`1850110`(IC 权重)→`8d213a2`(编排)→`7ebb434`(净值对比图)→`02165e4`(CLI+配置)
 - 契约同步（Task 6）：data-schemas.md 追加 Phase C 合成信号 schema 段、project-plan.md 更新 context (因子选择) 行、factors-clean.md §6 加实施状态标注
 - 真实验证（真实 state.parquet + 全市场 ohlcv 跑 `yq factor clean-c`、合成 vs 单因子回测对比结论）由 Task 7 执行，结果在本节补记
+
+### Task 7：全市场真实验证（2026-08-06）
+
+- **命令**：`yq factor clean-c --state data/audit/factor_monitor_full/state.parquet --data data/clean/full_market_ohlcv.parquet --representatives data/audit/factor_clean_a/representatives.json --output-dir data/audit/factor_clean_c --json`（**exit 0**；前台 2 分钟超时，经 nohup 后台跑完，**实际运行约 72 分钟**——全市场 4 代表因子（数据指纹 `c2bac861a6add8bf` 命中 Phase A 磁盘缓存）＋合成/4 单因子共 **5 次 run_pipeline 全市场回测**为耗时主体；stderr 仅存量 FutureWarning（engine.py pct_change deprecation）与 Matplotlib 中文字体字形缺失警告，无报错）
+- **窗口/参数**：synth_weighting = `equal`（默认等权）/ rebalance 20 / top_n 10 / bottom_n 5 / ic_lookback 60 / fwd_window 5；回测 capital 100 万 / max_weight 0.3 / dead_zone 0.015——合成与 4 个单因子**完全同参数**（§决策记录"回测公平性约定"）
+- **结果（验收判据 synth_sharpe ≥ best_single_sharpe）**：**synth_sharpe = 0.0846 < best_single_sharpe = 0.4919（calc_vol_rank_intraday_corr_6d）→ synth_beats_best_single = false，验收未达标**
+- **对比表摘要**（total_return / annual_return / sharpe_ratio / win_rate / trade_count；max_drawdown 全 NaN——BacktestEngine equity 含 NaN 时 drawdown 恒 NaN，5 策略一致，不影响横向比较）：
+  - synth：+1.60% / +0.55% / **0.0846** / 47.2% / 1318
+  - calc_atr_12d：-19.0% / -7.07% / -0.1267 / 46.5% / 473
+  - calc_close_vol_rank_cov_5d：-46.8% / -19.7% / -0.4466 / 45.8% / 1496
+  - calc_high_vol_rank_corr_3d：+17.0% / +5.59% / 0.2242 / 52.5% / 1459
+  - calc_vol_rank_intraday_corr_6d：+39.9% / +12.4% / **0.4919** / 51.7% / 1479
+- **信号核对**：synth_signals 3,540,684 行（= 726 交易日 × 4999 股全量行数）；signal 分布 `{0: 3,529,748, 1: 7,060, -1: 3,876}`——买入 7,060 = 10 只 × 706 个持有日（top_n=10 逐期逐日持有）；卖出 3,876 = 671 日 × 5 只（bottom_n=5）＋ 35 个再平衡日 × 15 只（5 bottom + 10 前持仓退出），与 rebalance 20 / top_n 10 / bottom_n 5 精确匹配
+- **如实记录（验收未达标）**：等权合成 Sharpe **0.085 显著低于**最佳单因子 calc_vol_rank_intraday_corr_6d（0.492），也低于 calc_high_vol_rank_corr_3d（0.224）；合成收益仅 +1.6% vs 最佳单因子 +39.9%。合成把 4 个代表等权混合后信号强度被稀释——代表因子（Phase A 按**相关冗余**去重）在**选股收益**上并不均衡：强正贡献（intraday_corr_6d、high_vol_rank_corr_3d）被弱/负贡献（atr_12d、close_vol_rank_cov_5d）中和。分散度角度：synth trade_count 1,318 与单因子 1,400-1,500 接近，未见换仓显著差异。**按计划约定不擅自调参数**（IC 加权、rebalance、top_n 均不动），如实记录后由用户裁决（候选方向：改 `--weighting ic_weighted` 重跑、核查合成信号/回测管道、或接受"合成劣于单因子"结论）
+- **产出**：`data/audit/factor_clean_c/`（summary.json + backtest_compare.parquet + synth_signals.parquet + equity_compare.png + nohup.log）
