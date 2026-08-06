@@ -287,3 +287,81 @@ def plot_factor_health_heatmap(
     fig.colorbar(im, ax=ax, shrink=0.8)
     fig.tight_layout()
     return fig
+
+
+def plot_corr_matrix(
+    corr_matrix: pd.DataFrame,
+    *,
+    title: str | None = None,
+) -> plt.Figure:
+    """画因子相关矩阵热力图（RdYlGn，-1..1 对称居中）。
+
+    Parameters
+    ----------
+    corr_matrix : DataFrame
+        ``factors.ops.correlation.compute_corr_matrix`` 的对称输出。
+    title : str | None
+        图表标题。
+
+    Returns
+    -------
+    plt.Figure
+    """
+    size = max(6, len(corr_matrix) * 0.55)
+    fig, ax = plt.subplots(figsize=(size, size))
+    im = ax.imshow(
+        corr_matrix.to_numpy(dtype=float), cmap="RdYlGn", vmin=-1.0, vmax=1.0
+    )
+    fig.colorbar(im, ax=ax, shrink=0.85, label="spearman ρ")
+    labels = list(corr_matrix.index)
+    ax.set_xticks(range(len(labels)), labels, rotation=45, ha="right", fontsize=9)
+    ax.set_yticks(range(len(labels)), labels, fontsize=9)
+    for i in range(len(labels)):
+        for j in range(len(labels)):
+            v = corr_matrix.to_numpy(dtype=float)[i, j]
+            if not np.isnan(v):
+                ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=7)
+    ax.set_title(title or "因子相关矩阵（最近窗口）")
+    fig.tight_layout()
+    return fig
+
+
+def plot_cluster_dendrogram(
+    corr_matrix: pd.DataFrame,
+    *,
+    threshold: float = 0.7,
+    linkage_method: str = "ward",
+    title: str | None = None,
+) -> plt.Figure:
+    """画因子层次聚类树状图，标注冗余判定阈值线。
+
+    Parameters
+    ----------
+    corr_matrix : DataFrame
+        相关矩阵（``compute_corr_matrix`` 输出）。
+    threshold : float
+        冗余阈值，横线画在距离 1-threshold 处。
+    linkage_method : str
+        scipy linkage 方法，默认 ``ward``。
+    title : str | None
+        图表标题。
+
+    Returns
+    -------
+    plt.Figure
+    """
+    from scipy.cluster.hierarchy import dendrogram, linkage
+    from scipy.spatial.distance import squareform
+
+    factors = list(corr_matrix.index)
+    d = (1.0 - corr_matrix.abs()).to_numpy(dtype=float)
+    d = np.where(np.isnan(d), 1.0, d)
+    np.fill_diagonal(d, 0.0)
+    z = linkage(squareform(d, checks=False), method=linkage_method)
+    fig, ax = plt.subplots(figsize=(max(6, len(factors) * 0.6), 4.5))
+    dendrogram(z, labels=factors, ax=ax)
+    ax.axhline(1.0 - threshold, color="red", linestyle="--", linewidth=1.0)
+    ax.set_ylabel("距离（1 − |ρ|）")
+    ax.set_title(title or "因子层次聚类（ward）")
+    fig.tight_layout()
+    return fig
