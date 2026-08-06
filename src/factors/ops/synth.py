@@ -137,3 +137,50 @@ def scores_to_signals(
             "confidence": confidence,
         }
     )
+
+
+def compute_ic_weights(
+    state: pd.DataFrame,
+    factors: list[str],
+    *,
+    as_of: pd.Timestamp,
+    fwd_window: int = 5,
+    lookback: int = 60,
+) -> dict[str, float]:
+    """state 长表 → 各因子 IC 均值权重（带符号，Σ|w|=1）。
+
+    每个因子取 ``as_of`` 之前 ``lookback`` 天的 ``ic`` 均值（剔除 NaN）；
+    IC 均值为负 → 权重负（反向因子）。全部无效 → 等权兜底。
+
+    Parameters
+    ----------
+    state : DataFrame
+        monitor 的 state 长表（STATE_COLS）。
+    factors : list[str]
+        参与合成的因子名。
+    as_of : Timestamp
+        权重评估截止日（只用其及之前的数据，无未来信息）。
+    fwd_window : int
+        取 state 中该 forward 窗口的 IC 行。
+    lookback : int
+        取最近多少个交易日的 IC 均值。
+
+    Returns
+    -------
+    dict[str, float]
+        {factor: weight}，Σ|w| = 1。
+    """
+    if not factors:
+        raise ValueError("factors 不能为空")
+    means: dict[str, float] = {}
+    for f in factors:
+        sub = state[
+            (state["factor"] == f)
+            & (state["fwd_window"] == fwd_window)
+            & (state["date"] <= as_of)
+        ]["ic"].dropna().tail(lookback)
+        means[f] = float(sub.mean()) if len(sub) > 0 else 0.0
+    total = sum(abs(v) for v in means.values())
+    if total == 0:
+        return {f: 1.0 / len(factors) for f in factors}
+    return {f: means[f] / total for f in factors}

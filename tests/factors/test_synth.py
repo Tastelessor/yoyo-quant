@@ -3,7 +3,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.ops.synth import combine_factor_scores, scores_to_signals
+from factors.ops.synth import (
+    combine_factor_scores,
+    compute_ic_weights,
+    scores_to_signals,
+)
 
 # ---------------------------------------------------------------------------
 # Task 1: combine_factor_scores
@@ -168,3 +172,87 @@ def test_scores_to_signals_prev_holding_exits_on_rebalance():
     assert abs(b["confidence"] - 0.9) < 1e-9
     # 退出后下一日 A 恢复中性（不再是持仓）
     assert out[(out["date"] == dates[3]) & (out["code"] == "A")]["signal"].iloc[0] == 0
+
+# ---------------------------------------------------------------------------
+# Task 3: compute_ic_weights
+# ---------------------------------------------------------------------------
+
+
+def test_ic_weights_from_state_mean_ic_with_sign():
+    dates = pd.bdate_range("2024-01-01", periods=10)
+    rows = []
+    for d in dates:
+        rows.append(
+            {
+                "date": d,
+                "factor": "f_positive",
+                "fwd_window": 5,
+                "ic": 0.03,
+                "rolling_ic": 0.03,
+                "rolling_ir": 0.5,
+                "t_stat": 3.0,
+                "state": "active",
+                "sustain_days": 10,
+            }
+        )
+        rows.append(
+            {
+                "date": d,
+                "factor": "f_negative",
+                "fwd_window": 5,
+                "ic": -0.01,
+                "rolling_ic": -0.01,
+                "rolling_ir": -0.2,
+                "t_stat": -1.5,
+                "state": "active",
+                "sustain_days": 10,
+            }
+        )
+    state = pd.DataFrame(rows)
+    w = compute_ic_weights(
+        state, ["f_positive", "f_negative"], as_of=pd.Timestamp("2024-01-10")
+    )
+    # mean(ic) = [0.03, -0.01] → w = [0.03/0.04, -0.01/0.04] = [0.75, -0.25]
+    assert abs(w["f_positive"] - 0.75) < 1e-9
+    assert abs(w["f_negative"] + 0.25) < 1e-9
+
+
+def test_ic_weights_lookback_trims_and_na_skips():
+    dates = pd.bdate_range("2024-01-01", periods=70)
+    rows = []
+    for i, d in enumerate(dates):
+        rows.append(
+            {
+                "date": d,
+                "factor": "f",
+                "fwd_window": 5,
+                "ic": 0.02 if i >= 10 else np.nan,  # 前 10 天 NaN
+                "rolling_ic": 0.02,
+                "rolling_ir": 0.4,
+                "t_stat": 2.0,
+                "state": "active",
+                "sustain_days": 10,
+            }
+        )
+    state = pd.DataFrame(rows)
+    w = compute_ic_weights(state, ["f"], as_of=pd.Timestamp("2024-03-01"), lookback=30)
+    # 有效 ic 共 60 天，tail(30) → 30 个 0.02 → mean=0.02 → 单因子 w=1.0
+    assert abs(w["f"] - 1.0) < 1e-9
+
+
+def test_ic_weights_all_invalid_falls_back_to_equal():
+    state = pd.DataFrame(
+        {
+            "date": [pd.Timestamp("2024-01-02")] * 2,
+            "factor": ["f1", "f2"],
+            "fwd_window": [5, 5],
+            "ic": [np.nan, np.nan],
+            "rolling_ic": [np.nan, np.nan],
+            "rolling_ir": [np.nan, np.nan],
+            "t_stat": [np.nan, np.nan],
+            "state": ["active", "active"],
+            "sustain_days": [1, 1],
+        }
+    )
+    w = compute_ic_weights(state, ["f1", "f2"], as_of=pd.Timestamp("2024-01-02"))
+    assert w == {"f1": 0.5, "f2": 0.5}
