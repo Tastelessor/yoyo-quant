@@ -11,3 +11,9 @@ oos_test_months: 1        # test 期长度（月，贴合日频换仓节奏）
 top_k: 5                  # 每期从去冗余代表集中选入因子数上限
 bootstrap_iters: 200      # 零分布打乱次数（多重检验修正）
 t_window: 60              # 零分布尾部窗口（交易日，与 monitor 滚动 t 口径一致）
+# Phase C 合成信号（对应 Q4）
+synth_weighting: equal   # equal | ic_weighted（IC 加权更优但更易过拟合）
+synth_rebalance: 20      # 信号再平衡周期（交易日）
+synth_top_n: 10          # 每期买入股票数
+synth_bottom_n: 5        # 每期卖出股票数
+ic_lookback: 60          # IC 加权权重评估窗口（交易日）

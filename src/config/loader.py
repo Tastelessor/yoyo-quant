@@ -44,6 +44,12 @@ FACTOR_CLEAN_DEFAULTS: dict = {
     "top_k": 5,
     "bootstrap_iters": 200,
     "t_window": 60,
+    # Phase C（合成信号）
+    "synth_weighting": "equal",
+    "synth_rebalance": 20,
+    "synth_top_n": 10,
+    "synth_bottom_n": 5,
+    "ic_lookback": 60,
 }
 
 
@@ -73,6 +79,11 @@ def load_factor_clean_config(path: Path) -> dict:
     for key in (
         "oos_train_months", "oos_test_months", "top_k", "bootstrap_iters", "t_window"
     ):
+        if not isinstance(cfg[key], int) or cfg[key] < 1:
+            raise ValueError(f"{key} 必须为正整数，收到 {cfg[key]!r}")
+    if cfg["synth_weighting"] not in {"equal", "ic_weighted"}:
+        raise ValueError(f"synth_weighting 非法: {cfg['synth_weighting']!r}")
+    for key in ("synth_rebalance", "synth_top_n", "synth_bottom_n", "ic_lookback"):
         if not isinstance(cfg[key], int) or cfg[key] < 1:
             raise ValueError(f"{key} 必须为正整数，收到 {cfg[key]!r}")
     return cfg

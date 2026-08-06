@@ -15,6 +15,7 @@ from analysis.factor_monitor import (
     run_monitor,
 )
 from analysis.factor_oos import run_phase_b
+from analysis.factor_synth import run_phase_c
 from config.loader import load_factor_clean_config
 from data.storage import load_parquet, save_parquet
 from factors.ops.evaluation import DEFAULT_WINDOWS, evaluate_factors
@@ -527,3 +528,96 @@ def factor_clean_b(
     except (ValueError, KeyError, FileNotFoundError) as exc:
         typer.echo(f"错误: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+
+@factor_app.command("clean-c")
+def factor_clean_c(
+    state: Path = typer.Option(..., "--state", help="monitor 输出的 state.parquet"),
+    data: Path = typer.Option(..., "--data", help="全市场行情 parquet"),
+    representatives: str = typer.Option(
+        ..., "--representatives",
+        help="代表因子名（逗号分隔）或 Phase A representatives.json 路径",
+    ),
+    config: Path | None = typer.Option(None, "--config", help="factor_clean.yaml"),
+    weighting: str | None = typer.Option(
+        None, "--weighting", help="合成方式：equal|ic_weighted"
+    ),
+    rebalance: int | None = typer.Option(
+        None, "--rebalance", help="信号再平衡周期（交易日）"
+    ),
+    top_n: int | None = typer.Option(None, "--top-n", help="每期买入股票数"),
+    bottom_n: int | None = typer.Option(None, "--bottom-n", help="每期卖出股票数"),
+    fwd_window: int | None = typer.Option(
+        None, "--fwd-window", help="IC 权重 forward 窗口"
+    ),
+    ic_lookback: int | None = typer.Option(
+        None, "--ic-lookback", help="IC 权重评估窗口（交易日）"
+    ),
+    capital: float | None = typer.Option(None, "--capital", help="回测初始资金"),
+    max_weight: float | None = typer.Option(None, "--max-weight", help="单票最大权重"),
+    dead_zone: float | None = typer.Option(None, "--dead-zone", help="换仓死区"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="禁用因子磁盘缓存"),
+    output_dir: Path | None = typer.Option(None, "--output-dir", help="输出目录"),
+    json_out: bool = typer.Option(False, "--json", help="JSON 输出"),
+):
+    """Phase C：代表因子合成信号 + 与单因子对比回测。"""
+    try:
+        cfg = load_factor_clean_config(config) if config is not None else {}
+        weighting = weighting if weighting is not None else str(
+            cfg.get("synth_weighting", "equal")
+        )
+        rebalance = rebalance if rebalance is not None else int(
+            cfg.get("synth_rebalance", 20)
+        )
+        top_n = top_n if top_n is not None else int(cfg.get("synth_top_n", 10))
+        bottom_n = bottom_n if bottom_n is not None else int(
+            cfg.get("synth_bottom_n", 5)
+        )
+        fwd_window = fwd_window if fwd_window is not None else int(
+            cfg.get("fwd_window", 5)
+        )
+        ic_lookback = ic_lookback if ic_lookback is not None else int(
+            cfg.get("ic_lookback", 60)
+        )
+        rep_arg: list[str] | Path = (
+            Path(representatives)
+            if Path(representatives).suffix == ".json"
+            else [s.strip() for s in representatives.split(",") if s.strip()]
+        )
+        out = run_phase_c(
+            state_path=state,
+            ohlcv_path=data,
+            representatives=rep_arg,
+            synth_weighting=weighting,
+            fwd_window=fwd_window,
+            ic_lookback=ic_lookback,
+            rebalance=rebalance,
+            top_n=top_n,
+            bottom_n=bottom_n,
+            use_cache=not no_cache,
+            output_dir=output_dir,
+            capital=capital if capital is not None else 1_000_000,
+            max_weight=max_weight if max_weight is not None else 0.3,
+            dead_zone=dead_zone if dead_zone is not None else 0.015,
+        )
+        summary = out["summary"]
+        if json_out:
+            typer.echo(
+                json.dumps(summary, ensure_ascii=False, indent=2, default=str)
+            )
+            return
+        typer.echo(
+            f"合成 Sharpe: {summary['synth_sharpe']:.3f}  "
+            f"最佳单因子: {summary['best_single']} "
+            f"(Sharpe {summary['best_single_sharpe']:.3f})"
+        )
+        typer.echo(
+            f"合成 > 最佳单因子: {'是' if summary['synth_beats_best_single'] else '否'}"
+        )
+        if output_dir is not None:
+            typer.echo(f"输出: {output_dir}")
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        typer.echo(f"错误: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+

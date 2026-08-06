@@ -371,3 +371,14 @@ class TestLoadFactorCleanConfig:
         p.write_text("corr_threshold: 2.0\n", encoding="utf-8")
         with pytest.raises(ValueError, match="corr_threshold"):
             load_factor_clean_config(p)
+
+    def test_load_factor_clean_config_synth_defaults_and_validation(self, tmp_path):
+        p = tmp_path / "factor_clean.yaml"
+        p.write_text("synth_weighting: ic_weighted\nsynth_top_n: 3\n", encoding="utf-8")
+        cfg = load_factor_clean_config(p)
+        assert cfg["synth_weighting"] == "ic_weighted"
+        assert cfg["synth_rebalance"] == 20  # 缺省合并
+        assert cfg["synth_top_n"] == 3
+        p.write_text("synth_weighting: bogus\n", encoding="utf-8")
+        with pytest.raises(ValueError):
+            load_factor_clean_config(p)
