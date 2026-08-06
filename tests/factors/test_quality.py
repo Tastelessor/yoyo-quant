@@ -6,7 +6,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from factors.builtin.quality import calc_cashflow_quality, calc_roe_level, calc_roe_stability
+from factors.builtin.quality import (
+    calc_cashflow_quality,
+    calc_roe_level,
+    calc_roe_stability,
+)
 
 
 @pytest.fixture

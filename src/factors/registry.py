@@ -257,7 +257,10 @@ def _register_defaults() -> None:
         register_factor(primary_name, func, tags=["volume_price", "gtja"])
         register_factor(alias, func, tags=["volume_price", "gtja"])
 
-    from factors.builtin.earnings import calc_earnings_acceleration, calc_earnings_surprise
+    from factors.builtin.earnings import (
+        calc_earnings_acceleration,
+        calc_earnings_surprise,
+    )
 
     register_factor(
         "calc_earnings_surprise",
@@ -333,7 +336,11 @@ def _register_defaults() -> None:
         register_factor(alias, func, tags=["mean_reversion", "gtja"])
 
     # --- 新增：GTJA 趋势（3） ---
-    from factors.builtin.trend import calc_ma_slope_6d, calc_ma_slope_20d, calc_macd_like
+    from factors.builtin.trend import (
+        calc_ma_slope_6d,
+        calc_ma_slope_20d,
+        calc_macd_like,
+    )
 
     trend_factors = [
         ("calc_ma_slope_6d", calc_ma_slope_6d, "gtja_21"),
@@ -356,7 +363,12 @@ def _register_defaults() -> None:
         register_factor(alias, func, tags=["vwap", "gtja"])
 
     # --- 新增：通用量价（4，带 window 参数） ---
-    from factors.builtin.volume_price import calc_atr, calc_obv, calc_rsi, calc_volume_ratio
+    from factors.builtin.volume_price import (
+        calc_atr,
+        calc_obv,
+        calc_rsi,
+        calc_volume_ratio,
+    )
 
     register_factor("calc_rsi", calc_rsi, tags=["volume_price"])
     register_factor("calc_obv", calc_obv, tags=["volume_price"])
