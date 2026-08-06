@@ -1,11 +1,12 @@
 """tests/factors/test_oos.py — Phase B 纯函数单测（Task 1-3 共用文件）。"""
 # Task 1 只交付 generate_oos_windows；Task 2 加回 select_top_factors /
-# compute_test_period_stats（及 numpy）。Task 3 追加时再加
-# bootstrap_t_distribution / pytest，提前 import 会导致收集期 ImportError。
+# compute_test_period_stats（及 numpy）；Task 3 最后追加
+# bootstrap_t_distribution，至此 import 清单完整（四个函数）。
 import numpy as np
 import pandas as pd
 
 from factors.ops.oos import (
+    bootstrap_t_distribution,
     compute_test_period_stats,
     generate_oos_windows,
     select_top_factors,
@@ -85,3 +86,28 @@ def test_compute_test_period_stats_constant():
     ic = pd.Series([0.02] * 10)
     st = compute_test_period_stats(ic)
     assert st["ic_t"] == float("inf") and st["sig"] is True
+
+
+# ---------------------------------------------------------------------------
+# Task 3: bootstrap_t_distribution
+# ---------------------------------------------------------------------------
+
+
+def test_bootstrap_t_distribution_deterministic_and_length():
+    rng = np.random.default_rng(0)
+    ic = pd.Series(rng.normal(0, 1, 120))
+    a = bootstrap_t_distribution(ic, 50, 20, seed=7)
+    b = bootstrap_t_distribution(ic, 50, 20, seed=7)
+    assert np.array_equal(a, b)
+    assert len(a) == 50
+    assert np.all(np.isfinite(a))
+    # 白噪声打乱后 |t| 的中位数应明显小于 2（非显著）
+    assert np.quantile(np.abs(a), 0.5) < 2.0
+
+
+def test_bootstrap_null_smaller_than_original_trend_t():
+    ic = pd.Series(np.arange(60) / 10.0)  # 强趋势序列：原尾部窗口 t 巨大
+    null = bootstrap_t_distribution(ic, 100, 20, seed=3)
+    w = ic.iloc[-20:]
+    t_orig = w.mean() / w.std(ddof=1) * np.sqrt(len(w))
+    assert t_orig > np.quantile(np.abs(null), 0.99)

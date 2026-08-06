@@ -134,3 +134,48 @@ def compute_test_period_stats(
         return {"ic_mean": mean, "ic_t": float("inf"), "ic_n": n, "sig": True}
     ic_t = mean / std * np.sqrt(n)
     return {"ic_mean": mean, "ic_t": ic_t, "ic_n": n, "sig": bool(abs(ic_t) > 2.0)}
+
+
+def bootstrap_t_distribution(
+    ic_series: pd.Series,
+    n_iters: int,
+    t_window: int,
+    *,
+    seed: int | None = None,
+) -> np.ndarray:
+    """train 期 IC 序列打乱重排 → t 统计量零分布（多重检验修正）。
+
+    破坏 IC 的时序结构但保留其分布形态，每次打乱后取尾部 ``t_window``
+    个样本的 t = mean/std×√n——与 monitor 的滚动 t 同口径。零分布的
+    |t| 高分位即"纯随机下 t 能多大"的参考线。
+
+    Parameters
+    ----------
+    ic_series : Series
+        train 段日频 IC 时序（state 长表 ic 列切片）。
+    n_iters : int
+        打乱次数（>= 1）。
+    t_window : int
+        尾部窗口（交易日，>= 2）。
+    seed : int | None
+        随机种子，保证可复现。
+
+    Returns
+    -------
+    ndarray
+        长度 ``n_iters`` 的 t 统计量零分布。
+    """
+    if not isinstance(n_iters, int) or n_iters < 1:
+        raise ValueError(f"n_iters 必须为正整数，收到 {n_iters!r}")
+    if not isinstance(t_window, int) or t_window < 2:
+        raise ValueError(f"t_window 必须为 >= 2 的整数，收到 {t_window!r}")
+    values = ic_series.dropna().to_numpy(dtype=float)
+    if values.size < t_window:
+        return np.full(n_iters, np.nan)
+    rng = np.random.default_rng(seed)
+    out = np.empty(n_iters)
+    for i in range(n_iters):
+        w = rng.permutation(values)[-t_window:]
+        std = w.std(ddof=1)
+        out[i] = np.inf if std == 0 else w.mean() / std * np.sqrt(len(w))
+    return out
