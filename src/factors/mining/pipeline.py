@@ -95,10 +95,13 @@ def run_mining_screen(
     rows: dict[str, dict] = {}
     for f in factor_names:
         # run_factor 返回与 wide 行对齐的 Series；compute_ic_by_layer 需要
-        # factor_df 含因子名列，故按位置并入 wide 后传入。
+        # factor_df 含因子名列。用 to_numpy() 位置赋值（与 evaluation.py
+        # 的 fwd 位置赋值一致），避免 assign 按索引对齐的隐式契约。
         factor_series = run_factor(f, wide)
+        wide_with_factor = wide.copy()
+        wide_with_factor[f] = factor_series.to_numpy()
         ic_table = compute_ic_by_layer(
-            wide.assign(**{f: factor_series}),
+            wide_with_factor,
             f, fwd, layers, min_obs=min_obs, min_days=min_days,
         )
         flat: dict = {}
