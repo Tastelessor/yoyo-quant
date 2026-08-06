@@ -139,3 +139,32 @@ def test_scores_to_signals_top_bottom_zero_raises():
     score = pd.Series([0.5], index=df.index)
     with pytest.raises(ValueError):
         scores_to_signals(df, score, rebalance=1, top_n=0, bottom_n=0)
+
+
+def test_scores_to_signals_prev_holding_exits_on_rebalance():
+    # 两期 buys 不同：第一期 A 最高 → 买入 A；第二期得分互换 → B 最高买入、
+    # A 未再买入且本期非最低 → 仅由「退出持仓」分支处理（再平衡日卖出）
+    dates = pd.bdate_range("2024-01-02", periods=4)
+    rows = []
+    for d in dates:
+        for c in ["A", "B", "C"]:
+            rows.append({"date": d, "code": c})
+    df = pd.DataFrame(rows)
+    score = pd.Series(
+        [0.9, 0.5, 0.1] * 2 + [0.5, 0.9, 0.1] * 2, index=df.index
+    )
+    out = scores_to_signals(df, score, rebalance=2, top_n=1, bottom_n=1)
+    # 第一期（第 0-1 天）：A 买入（signal=1, conf=0.9）、C 卖出
+    p1 = out.iloc[:6]
+    assert p1[p1["code"] == "A"]["signal"].tolist() == [1, 1]
+    assert p1[p1["code"] == "C"]["signal"].tolist() == [-1, -1]
+    # 再平衡日（第 2 天）：B 买入；A 退出持仓 → signal=-1, confidence=0.5
+    rb = out[out["date"] == dates[2]]
+    a = rb[rb["code"] == "A"].iloc[0]
+    assert a["signal"] == -1
+    assert abs(a["confidence"] - 0.5) < 1e-9
+    b = rb[rb["code"] == "B"].iloc[0]
+    assert b["signal"] == 1
+    assert abs(b["confidence"] - 0.9) < 1e-9
+    # 退出后下一日 A 恢复中性（不再是持仓）
+    assert out[(out["date"] == dates[3]) & (out["code"] == "A")]["signal"].iloc[0] == 0
