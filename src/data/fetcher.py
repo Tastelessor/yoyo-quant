@@ -14,6 +14,11 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 _PROXY_URL = "https://quantdata888.duckdns.org"
 
+# fetch_fundamentals 必需返回列（total_mv/circ_mv 亿元、turnover_rate %）
+FUNDAMENTALS_COLUMNS = [
+    "code", "pe", "pb", "total_mv", "circ_mv", "turnover_rate"
+]
+
 
 def _to_ts_code(code: str) -> str:
     """将纯数字代码转换为 tushare 格式 (000001 -> 000001.SZ)。"""
@@ -402,7 +407,7 @@ def fetch_fundamentals(
     Returns
     -------
     DataFrame
-        Columns: code, pe, pb, total_mv, circ_mv (亿元), turnover_rate (%)。
+        Columns: code, pe, pb, total_mv (亿元), circ_mv (亿元), turnover_rate (%)。
     """
     token = os.environ.get("TUSHARE_TOKEN", "")
     if not token:
@@ -419,7 +424,10 @@ def fetch_fundamentals(
     cache_file = cache_dir / f"{date_str}.parquet"
 
     if cache_file.exists():
-        return pd.read_parquet(cache_file)
+        df = pd.read_parquet(cache_file)
+        # 旧缓存（如本 task 前落盘的 4 列版本）缺必需列时忽略并走 API 重拉，自动迁移
+        if all(col in df.columns for col in FUNDAMENTALS_COLUMNS):
+            return df
 
     api = ts.pro_api(token)
     api._DataApi__http_url = _PROXY_URL
@@ -430,9 +438,7 @@ def fetch_fundamentals(
     )
 
     if raw is None or raw.empty:
-        return pd.DataFrame(
-            columns=["code", "pe", "pb", "total_mv", "circ_mv", "turnover_rate"]
-        )
+        return pd.DataFrame(columns=FUNDAMENTALS_COLUMNS)
 
     df = raw.rename(columns={"ts_code": "code"})
     df["code"] = df["code"].str.split(".").str[0]
@@ -441,8 +447,6 @@ def fetch_fundamentals(
     df["circ_mv"] = df["circ_mv"] / 10_000
 
     cache_dir.mkdir(parents=True, exist_ok=True)
-    df[["code", "pe", "pb", "total_mv", "circ_mv", "turnover_rate"]].to_parquet(
-        cache_file, index=False
-    )
+    df[FUNDAMENTALS_COLUMNS].to_parquet(cache_file, index=False)
 
-    return df[["code", "pe", "pb", "total_mv", "circ_mv", "turnover_rate"]]
+    return df[FUNDAMENTALS_COLUMNS]

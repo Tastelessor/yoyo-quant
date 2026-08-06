@@ -564,12 +564,59 @@ def test_fetch_fundamentals_returns_dataframe(tmp_path):
 
 
 def test_fetch_fundamentals_uses_cache(tmp_path):
-    """缓存存在时不应调用 API。"""
+    """旧缓存缺必需列时应忽略并走 API 重拉，返回 6 列且重写缓存。"""
     cache_dir = tmp_path / "fundamentals"
     cache_dir.mkdir()
     cache_file = cache_dir / "20260522.parquet"
     pd.DataFrame({"code": ["000001"], "pe": [5.5]}).to_parquet(cache_file, index=False)
-    with patch("data.fetcher.ts") as mock_ts:
+
+    mock_api = MagicMock()
+    mock_api.daily_basic.return_value = pd.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "trade_date": ["20260522"],
+            "pe": [5.5],
+            "pb": [0.6],
+            "total_mv": [2000000.0],  # 万元
+            "circ_mv": [1500000.0],   # 万元
+            "turnover_rate": [1.2],
+        }
+    )
+    with (
+        patch("data.fetcher.ts") as mock_ts,
+        patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
+    ):
+        mock_ts.pro_api.return_value = mock_api
+        result = fetch_fundamentals("2026-05-22", cache_dir=cache_dir)
+    assert list(result.columns) == [
+        "code", "pe", "pb", "total_mv", "circ_mv", "turnover_rate"
+    ]
+    assert list(result["code"]) == ["000001"]
+    # 重拉后缓存被 6 列数据重写（旧缓存自动迁移）
+    refetched = pd.read_parquet(cache_file)
+    assert "circ_mv" in refetched.columns and "turnover_rate" in refetched.columns
+
+
+def test_fetch_fundamentals_cache_hit_full_columns_skips_api(tmp_path):
+    """缓存列齐全（6 列）时命中且不调用 API。"""
+    cache_dir = tmp_path / "fundamentals"
+    cache_dir.mkdir()
+    cache_file = cache_dir / "20260522.parquet"
+    pd.DataFrame(
+        {
+            "code": ["000001"],
+            "pe": [5.5],
+            "pb": [0.6],
+            "total_mv": [200.0],
+            "circ_mv": [150.0],
+            "turnover_rate": [1.2],
+        }
+    ).to_parquet(cache_file, index=False)
+    with (
+        patch("data.fetcher.ts") as mock_ts,
+        patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}),
+    ):
         result = fetch_fundamentals("2026-05-22", cache_dir=cache_dir)
     assert list(result["code"]) == ["000001"]
+    assert "circ_mv" in result.columns and "turnover_rate" in result.columns
     mock_ts.pro_api.assert_not_called()
