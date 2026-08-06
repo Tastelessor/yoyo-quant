@@ -156,7 +156,9 @@ def run_phase_a(
 
         fig = plot_corr_matrix(corr)
         fig.savefig(out / "corr_heatmap.png", dpi=110, bbox_inches="tight")
-        plot_cluster_dendrogram(corr, threshold=corr_threshold).savefig(
-            out / "dendrogram.png", dpi=110, bbox_inches="tight"
-        )
+        if len(corr) > 1:
+            # 1×1 相关矩阵没有聚类树（scipy linkage 对空距离矩阵抛错），跳过 dendrogram
+            plot_cluster_dendrogram(corr, threshold=corr_threshold).savefig(
+                out / "dendrogram.png", dpi=110, bbox_inches="tight"
+            )
     return result

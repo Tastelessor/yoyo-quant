@@ -126,3 +126,28 @@ def test_run_phase_a_missing_state_raises(tmp_path):
             state_path=tmp_path / "nope.parquet",
             ohlcv_path=tmp_path / "nope.parquet",
         )
+
+
+def test_run_phase_a_single_factor_outputs_no_crash(tmp_path):
+    """单候选因子 + output_dir：不抛异常；heatmap 生成，dendrogram 不生成。
+
+    1×1 相关矩阵没有聚类树可画（scipy linkage 对空距离矩阵抛错），
+    编排层应跳过 dendrogram，只写 heatmap。
+    """
+    state_path = tmp_path / "state.parquet"
+    ohlcv_path = tmp_path / "ohlcv.parquet"
+    out_dir = tmp_path / "out"
+    _state().iloc[:1].to_parquet(state_path, index=False)
+    _ohlcv().to_parquet(ohlcv_path, index=False)
+
+    out = run_phase_a(
+        state_path=state_path,
+        ohlcv_path=ohlcv_path,
+        use_cache=False,
+        output_dir=out_dir,
+    )
+    assert out["factors"] == ["calc_momentum_5d_change"]
+    assert (out_dir / "corr_matrix.parquet").exists()
+    assert (out_dir / "corr_heatmap.png").exists()
+    assert not (out_dir / "dendrogram.png").exists()
+
