@@ -7,8 +7,10 @@ import pandas as pd
 import pytest
 
 from analysis.plot import (
+    plot_bootstrap_null,
     plot_factor_health_heatmap,
     plot_factor_lifecycle,
+    plot_oos_winrate,
     plot_sweep_heatmap,
     plot_sweep_metrics,
 )
@@ -171,3 +173,31 @@ def test_health_heatmap_missing_values():
     fig = plot_factor_health_heatmap(df)
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
+
+
+# --- plot_oos_winrate / plot_bootstrap_null（Phase B）---
+
+
+def test_plot_oos_winrate(tmp_path):
+    import pandas as pd
+
+    per = pd.DataFrame(
+        {
+            "period_idx": [0, 1, 2],
+            "selected": [4, 4, 0],
+            "win_rate": [0.75, 0.5, np.nan],
+        }
+    )
+    fig = plot_oos_winrate(per)
+    ax = fig.axes[0]
+    assert len(ax.patches) == 2  # 无入选期不画条
+    assert ax.get_xlabel() == "period_idx"
+    fig.savefig(tmp_path / "w.png")
+
+
+def test_plot_bootstrap_null(tmp_path):
+    fig = plot_bootstrap_null(["f1", "f2"], [4.5, 2.8], 2.1)
+    ax = fig.axes[0]
+    assert len(ax.patches) == 2
+    assert ax.get_ylabel() == "|train_t|"
+    fig.savefig(tmp_path / "b.png")
