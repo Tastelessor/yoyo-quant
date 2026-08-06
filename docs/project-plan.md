@@ -78,6 +78,7 @@
 | factors (质量) | ✅ 完成 | builtin/quality.py: roe_level + roe_stability + cashflow_quality + 10 tests |
 | factors (分层) | ✅ 完成 | Phase 0: builtin/(13 因子实现) + ops/(评估/中性化/缓存) 分层；顶层 re-export 兼容 + 1058 单测 + 30 pipeline |
 | factors (相关性去冗余) | ✅ 完成 | Phase A: ops/correlation.py（相关矩阵+聚类+代表）+ analysis/factor_clean.py 编排 + yq factor clean-a + factor_clean.yaml |
+| factors (walk-forward OOS) | ✅ 完成 | Phase B: ops/oos.py（窗口生成+选因子+test 统计+bootstrap 零分布）+ analysis/factor_oos.py 编排 + yq factor clean-b + factor_clean.yaml Phase B 段 |
 | strategies (基本面组合) | ✅ 完成 | fundamental_diversified.py: 3 因子 IR 加权（评估后从 9 个候选中筛选）+ YAML 配置 |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
 | context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
@@ -95,10 +96,11 @@
 src/
 ├── analysis/
 │   ├── param_sweep.py           # 参数网格搜索 + 结果排序
-│   ├── plot.py                  # 热力图 + 指标柱状图 + 因子生命周期双轴图/健康热力图
+│   ├── plot.py                  # 热力图 + 指标柱状图 + 因子生命周期双轴图/健康热力图 + OOS 胜率图/bootstrap 零分布对比图
 │   ├── pipeline_diagnostics.py  # 管道诊断工具
 │   ├── pool_matrix.py           # 策略 × 行业矩阵回测
-│   └── factor_monitor.py        # 因子生命周期状态机 + 尾部增量 + 持久化
+│   ├── factor_monitor.py        # 因子生命周期状态机 + 尾部增量 + 持久化
+│   └── factor_oos.py            # Phase B: walk-forward OOS 编排（train 选 → test 验）
 ├── config/
 │   ├── __init__.py
 │   └── loader.py                # YAML 加载 + build 函数
@@ -131,7 +133,8 @@ src/
 │       ├── evaluation.py        # 因子评估 (IC/IR/forward return/分层/滚动统计)
 │       ├── neutralize.py        # 行业中性化
 │       ├── cache.py             # 因子结果磁盘缓存 (parquet, 键含参数哈希+数据指纹)
-│       └── correlation.py       # Phase A: 截面相关矩阵 + 聚类去冗余
+│       ├── correlation.py       # Phase A: 截面相关矩阵 + 聚类去冗余
+│       └── oos.py               # Phase B: walk-forward 窗口生成/选因子/test 统计/零分布
 ├── yq/                          # 命令行工具 (typer)
 │   ├── cli.py                   # 根入口: factor/cache 子命令组 + --version
 │   ├── factors.py               # yq factor list/run/evaluate

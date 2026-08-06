@@ -1571,3 +1571,27 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 - **产出**：`data/audit/factor_clean_a/`（corr_matrix.parquet + corr_heatmap.png + dendrogram.png + representatives.json + stderr.log）
 - **阈值决策**：按计划约定不擅自调——0.7 为设计默认，事实是 4 个 GTJA 类两两相关 0.28-0.80；待用户裁决是否调整 `configs/factor_clean.yaml` 的 corr_threshold（见会话 ask 结果）
 - **阈值决策（用户裁决 2026-08-06）**：**保持 corr_threshold=0.7 不变**——4 个 GTJA 类中仅 close_vol_rank_cov_5d↔vwap_vol_rank_corr_5d（0.80）达共线，high(0.53-0.68)/intraday(0.28-0.43) 是真实独立维度；去冗余的诚实结果是 **4 个代表**（ATR 族 1 + 量价族 3），组合时按 4 维度分散
+
+## Phase 28: Phase B walk-forward OOS 验证（2026-08-06）
+
+### 决策记录
+- **动机**：Phase A 去冗余只解决"哪些因子相互独立"，未验证"这套选因子机制是否可信"。每期 train 段选因子（去冗余 + bootstrap 零分布过滤 + top-K）→ test 段重算 IC 验证；若 OOS 胜率 ≈50% 说明选择机制没有信息，回到 Phase A 重新思考。OOS 验证的是"选择机制"不是"因子永生"，监控状态机仍持续跑，二者配套（OOS 校准方法，监控跟踪实时状态）
+- **零分布口径（多重检验修正）**：train 段全部候选因子的日频 IC 序列打乱重排（破坏时序结构、保留分布形态），每次取尾部 t_window 个样本算 t = mean/std×√n——与 monitor 滚动 t 同口径；|t| 零分布的 95 分位（null_95）作入选参考线，入选要求 |t| > max(1, null_95)。理由：每期从大量因子选 top-K，纯随机下也有约 4 个 |t|>2
+- **win 定义**：test 期显著且方向保持——`(train_t>0 and test_ic_t>2) or (train_t<0 and test_ic_t<-2)`；任一侧 NaN → False
+- **不耦合 walk_forward**：不 import `backtest.walk_forward`（避免回测链耦合），窗口语义与其一致——train 紧贴 test、滑窗步长 = test_months、test 终点超出数据末日的期不产生
+- **每期切片内存策略**：不做全量因子值——每期只切 [train 首日 − LOOKBACK_MAX, test 末日 + fwd_window] 的行情段再跑 run_factor，大市值全历史行情下内存可控，同时天然限定 IC 计算范围
+- **防泄漏四约束固化**：① train/test 日期严格不相交（state 长表按日期切片天然支持）；② 因子值纯历史（rolling 类算子无 lookahead，需测试固化断言）；③ forward return 只在 test 期内部计算（含 fwd 缓冲）；④ 可交易性约束——exclude_untradable 默认开
+- **模块边界**：纯函数放 `factors/ops/oos.py`（无状态，对齐 evaluation 契约），业务编排放 `analysis/factor_oos.py`（只读 monitor 的 state 长表 + 全市场 ohlcv，不重算 monitor 的滚动统计）
+
+### 执行（TDD，6 task）
+- **Task 1**：`generate_oos_windows`（严格不相交、train 紧贴 test、滑窗步长 = test_months、test 超末日不产生）+ 4 tests → `c8e5caa`
+- **Task 2**：`select_top_factors`（|t| 降序 top_k、min_t 过滤）+ `compute_test_period_stats`（ic_t = mean/std×√n、std=0→inf、n<min_days→NaN/False）+ 7 tests → **3 处 brief bug 修正**：① select_top_factors 改 dropna——NaN 恒剔除、不参与排序选择（计划"NaN 排最后"按 sort na_position 参考实现有歧义）；② compute_test_period_stats 加 nunique<=1 判恒等（与 std=0 同走 inf，防止全等 IC 误判）；③ sig 用 bool() 包装（原生 bool，避免 np.bool_ 序列化问题）→ `d3f6f68`
+- **Task 3**：`bootstrap_t_distribution`（IC 打乱重排 + 尾部 t_window 样本 t 零分布，seed 可复现）+ 2 tests → `1e9a6a4`；review fix → `f7721a9`（补非平凡白噪声 |t| 中位数 < 2 与短序列全 NaN 边界测试，防止退化实现静默通过）
+- **Task 4**：`run_phase_b` 编排（train 末 active/decaying × fwd_window → 切片跑 run_factor → 去冗余 → bootstrap 零分布 → 代表集 top-K → test 段重算 IC）+ OOS 绘图两函数（`5305f03` 预交付，因 output_dir 分支依赖）+ 3 tests → `5305f03` + `2d5aa06`；review fix → `62be7a6`（bootstrap 守卫改 dropna 后判长度 + test 期长度校验：len(test) ≤ fwd_window+5 直接 ValueError）
+- **Task 5**：OOS 绘图测试（plot_oos_winrate / plot_bootstrap_null 锚点）+ 2 tests → `8cff926`
+- **Task 6**：`yq factor clean-b` CLI + `configs/factor_clean.yaml` Phase B 段 + FACTOR_CLEAN_DEFAULTS +5（11 项）+ load_factor_clean_config 校验扩展（Phase B 5 键正整数）+ 2 tests → `3dc88f7`
+
+### 测试与提交
+- 全量单测 **1116 passed**（Phase B 新增 24：oos 15 + factor_oos 5 + OOS 绘图 2 + clean-b CLI 2），ruff 干净
+- commits（`23e8651..HEAD`，9 个）：`c8e5caa`(窗口)→`d3f6f68`(选因子+test 统计)→`1e9a6a4`(零分布)→`f7721a9`(零分布测试, review fix)→`5305f03`(OOS 绘图)→`2d5aa06`(编排)→`62be7a6`(守卫+校验, review fix)→`8cff926`(绘图测试)→`3dc88f7`(CLI+配置)
+- 真实验证（真实 state.parquet + 全市场 ohlcv 跑 `yq factor clean-b`、核验收敛结果、PNG 落盘）由 Task 8 执行，结果在本节补记

@@ -260,3 +260,27 @@ neutralization:
 - 输出 dict：as_of / factors / skipped / corr_matrix / clusters / representatives；output_dir 写 parquet + JSON + PNG
 - 配置：`configs/factor_clean.yaml`（load_factor_clean_config，默认 corr_threshold=0.7 / corr_window=60 / cluster_linkage=ward / representative_by=t_stat）
 - CLI：`yq factor clean-a --state ... --data ... [--config factor_clean.yaml] [--window 60] [--threshold 0.7] [--linkage ward] [--by t_stat] [--fwd-window 5] [--no-cache] [--output-dir] [--json]`
+
+## Phase B walk-forward OOS — factors.ops.oos 模块
+
+> 纯函数、无状态，对齐 factors.ops.evaluation 契约风格；不 import backtest.walk_forward（避免回测链耦合），窗口语义与其一致：train 紧贴 test、滑窗步长 = test_months。
+
+### 函数契约（factors/ops/oos.py）
+
+| 函数 | 输出 | 说明 |
+|------|------|------|
+| `generate_oos_windows(dates, *, train_months=12, test_months=1)` | list[(DatetimeIndex, DatetimeIndex)] | 每期 (train, test) 实际交易日；严格不相交、train 紧贴 test；test 终点超出数据末日的期不产生 |
+| `select_top_factors(stats, top_k, *, min_t=None)` | list[str] | 按 \|t_stat\| 降序取 top_k；min_t 给定时过滤 \|t\| < min_t；t_stat 为 NaN 的因子恒被剔除（不参与排序选择） |
+| `compute_test_period_stats(ic_series, *, min_days=5)` | dict（ic_mean/ic_t/ic_n/sig） | ic_t = mean/std×√n；std=0 或恒等 → ic_t=inf/sig=True；n<min_days → ic_t=NaN/sig=False；sig = \|ic_t\|>2 |
+| `bootstrap_t_distribution(ic_series, n_iters, t_window, *, seed=None)` | ndarray（n_iters） | IC 打乱重排（破坏时序结构、保留分布形态）后尾部 t_window 个样本的 t 零分布（与 monitor 滚动 t 同口径）；输入不足 t_window → 全 NaN |
+
+### Phase B 编排 — analysis.factor_oos.run_phase_b
+
+- 输入：state.parquet（STATE_COLS 长表）+ ohlcv parquet（全市场行情）
+- 每期：train 末 active/decaying × fwd_window → 因子值（run_factor，切片 [train 首日−LOOKBACK_MAX, test 末日+fwd_window]）→ 去冗余（train 末端 corr_window 天，correlation 纯函数）→ bootstrap 零分布 95 分位（train 段 ic 打乱，t_window）→ 代表集 \|t\| > max(1, null_95) 按 \|t\| 降序 top_k → test 段重算 IC（exclude_untradable 默认开）→ 记录
+- 输出 periods 长表列（15）：period_idx / train_start / train_end / test_start / test_end / factor / cluster_id / train_t / null_95 / selected / test_ic_mean / test_ic_t / test_ic_n / test_sig / win
+- summary 键：periods_total / periods_with_selection / periods_selected_total / overall_win_rate / overall_sig_rate / null_95_mean / period_win_rates（另含 train_months/test_months/top_k/bootstrap_iters/t_window 配置键）
+- output_dir 写：oos_results.parquet + oos_summary.json + oos_winrate.png + oos_bootstrap.png
+- win = (train_t>0 and test_ic_t>2) or (train_t<0 and test_ic_t<-2)；test 期显著且方向保持；任一侧 NaN → False
+- 配置：`configs/factor_clean.yaml` Phase B 段（oos_train_months=12 / oos_test_months=1 / top_k=5 / bootstrap_iters=200 / t_window=60），FACTOR_CLEAN_DEFAULTS 同步（11 项）
+- CLI：`yq factor clean-b --state ... --data ... [--config] [--train-months] [--test-months] [--top-k] [--bootstrap-iters] [--t-window] [--window] [--threshold] [--linkage] [--by] [--fwd-window] [--seed] [--no-cache] [--output-dir] [--json]`

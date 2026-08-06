@@ -147,6 +147,8 @@ src/factors/
 
 ## 5. Phase B：walk-forward OOS 验证
 
+> **状态：✅ 已实施（2026-08-06）**。实现计划见 [phase-b-oos-plan.md](phase-b-oos-plan.md)，执行记录见 [history.md](history.md) Phase 28。本节保留为设计说明（口径/防泄漏/多重检验动机），与实现契约（data-schemas.md）一致。
+
 ### 5.1 机制
 
 ```
