@@ -297,8 +297,8 @@ neutralization:
   IC 均值权重（带符号），Σ|w|=1；全部无效 → 等权。
 - `run_phase_c(...) -> dict`：键 `signals`（合成信号）/ `compare`（回测对比表，
   index=strategy，列 = BacktestEngine metrics）/ `equity_curves` / `summary`
-  （synth_weighting / best_single / synth_sharpe / best_single_sharpe /
-  synth_beats_best_single）。output_dir 写 synth_signals.parquet /
+  （synth_weighting / weights / best_single / synth_sharpe /
+  best_single_sharpe / synth_beats_best_single）。output_dir 写 synth_signals.parquet /
   backtest_compare.parquet / equity_compare.png / summary.json。
 - 合成信号与 `Strategy.generate_signal` 输出格式一致（date, code, signal, confidence），
   可直接喂 `backtest.pipeline.run_pipeline`；Phase C 不改 strategies/portfolio 模块。

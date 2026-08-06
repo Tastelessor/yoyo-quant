@@ -95,6 +95,7 @@ def test_run_phase_c_equal_weight_end_to_end(tmp_path):
     )
     assert "compare" in out and "equity_curves" in out and "summary" in out
     assert out["summary"]["synth_weighting"] == "equal"
+    assert out["summary"]["weights"] is None
 
 
 def test_run_phase_c_ic_weighted_and_output_dir(tmp_path):
@@ -121,6 +122,10 @@ def test_run_phase_c_ic_weighted_and_output_dir(tmp_path):
     summary = json.loads((out_dir / "summary.json").read_text())
     assert summary["synth_weighting"] == "ic_weighted"
     assert "best_single" in summary
+    # 契约：ic_weighted 模式 summary 必须带 weights（可观测各因子实际参与权重）
+    w = summary["weights"]
+    assert isinstance(w, dict)
+    assert set(w) == {"calc_momentum_5d_change", "calc_volume_ratio"}
 
 
 def test_run_phase_c_best_single_and_beats_flag(tmp_path):

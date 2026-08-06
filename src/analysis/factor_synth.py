@@ -190,6 +190,7 @@ def run_phase_c(
     )
     summary = {
         "synth_weighting": synth_weighting,
+        "weights": weights,
         "representatives": factors,
         "rebalance": rebalance,
         "top_n": top_n,
