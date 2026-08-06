@@ -106,6 +106,11 @@ def run_phase_b(
     )
     if not windows:
         raise ValueError("数据长度不足以构成任何 train/test 窗口")
+    if len(windows[0][1]) <= fwd_window + 5:
+        raise ValueError(
+            f"test 期过短（{len(windows[0][1])} 天），不足以支撑 "
+            f"fwd_window={fwd_window} 的 OOS 验证"
+        )
 
     rows: list[dict] = []
     period_wr: list[dict] = []
@@ -177,7 +182,7 @@ def run_phase_b(
             & (state["factor"].isin(candidates))
         )
         for f, ic in state.loc[ic_mask, ["factor", "ic"]].groupby("factor")["ic"]:
-            if len(ic) >= t_window:
+            if ic.dropna().size >= t_window:
                 null_list.extend(
                     bootstrap_t_distribution(
                         ic, bootstrap_iters, t_window, seed=seed
