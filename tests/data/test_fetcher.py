@@ -534,7 +534,7 @@ def test_fetch_all_stocks_uses_cache(tmp_path):
 
 
 def test_fetch_fundamentals_returns_dataframe(tmp_path):
-    """应返回包含 code, pe, pb, total_mv 的 DataFrame。"""
+    """应返回包含 code, pe, pb, total_mv, circ_mv, turnover_rate 的 DataFrame。"""
     mock_api = MagicMock()
     mock_api.daily_basic.return_value = pd.DataFrame(
         {
@@ -543,6 +543,8 @@ def test_fetch_fundamentals_returns_dataframe(tmp_path):
             "pe": [5.5, 30.2],
             "pb": [0.6, 10.1],
             "total_mv": [2000000.0, 5000000.0],  # 万元
+            "circ_mv": [1500000.0, 4000000.0],   # 万元
+            "turnover_rate": [1.2, 0.5],
         }
     )
     with (
@@ -551,10 +553,14 @@ def test_fetch_fundamentals_returns_dataframe(tmp_path):
     ):
         mock_ts.pro_api.return_value = mock_api
         result = fetch_fundamentals("2026-05-22", cache_dir=tmp_path)
-    assert list(result.columns) == ["code", "pe", "pb", "total_mv"]
+    assert list(result.columns) == [
+        "code", "pe", "pb", "total_mv", "circ_mv", "turnover_rate"
+    ]
     assert result["code"].iloc[0] == "000001"
     # total_mv should be converted from 万元 to 亿元
     assert result["total_mv"].iloc[0] == 200.0
+    assert result["circ_mv"].iloc[0] == 150.0
+    assert result["turnover_rate"].iloc[0] == 1.2
 
 
 def test_fetch_fundamentals_uses_cache(tmp_path):

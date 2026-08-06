@@ -402,7 +402,7 @@ def fetch_fundamentals(
     Returns
     -------
     DataFrame
-        Columns: code, pe, pb, total_mv (亿元)。
+        Columns: code, pe, pb, total_mv, circ_mv (亿元), turnover_rate (%)。
     """
     token = os.environ.get("TUSHARE_TOKEN", "")
     if not token:
@@ -426,18 +426,23 @@ def fetch_fundamentals(
 
     raw = api.daily_basic(
         trade_date=date_str,
-        fields="ts_code,trade_date,pe,pb,total_mv",
+        fields="ts_code,trade_date,pe,pb,total_mv,circ_mv,turnover_rate",
     )
 
     if raw is None or raw.empty:
-        return pd.DataFrame(columns=["code", "pe", "pb", "total_mv"])
+        return pd.DataFrame(
+            columns=["code", "pe", "pb", "total_mv", "circ_mv", "turnover_rate"]
+        )
 
     df = raw.rename(columns={"ts_code": "code"})
     df["code"] = df["code"].str.split(".").str[0]
-    # total_mv is in 万元, convert to 亿元
+    # total_mv / circ_mv 单位万元 → 亿元；turnover_rate 原样（%）
     df["total_mv"] = df["total_mv"] / 10_000
+    df["circ_mv"] = df["circ_mv"] / 10_000
 
     cache_dir.mkdir(parents=True, exist_ok=True)
-    df[["code", "pe", "pb", "total_mv"]].to_parquet(cache_file, index=False)
+    df[["code", "pe", "pb", "total_mv", "circ_mv", "turnover_rate"]].to_parquet(
+        cache_file, index=False
+    )
 
-    return df[["code", "pe", "pb", "total_mv"]]
+    return df[["code", "pe", "pb", "total_mv", "circ_mv", "turnover_rate"]]
