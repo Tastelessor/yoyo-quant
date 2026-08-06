@@ -1017,7 +1017,7 @@ git commit -m "feat(analysis): Phase A 编排 run_phase_a（state+ohlcv → 代�
 - Consumes: `run_phase_a`（Task 5）、`load_factor_clean_config`
 - Produces: `load_factor_clean_config(path: Path) -> dict`（校验 + 默认值合并，默认见 `FACTOR_CLEAN_DEFAULTS`）；CLI 命令 `yq factor clean-a`（参数 `--state`（必填）、`--data`（必填）、`--config`、`--window 60`、`--threshold 0.7`、`--linkage ward`、`--by t_stat`、`--fwd-window 5`、`--no-cache`、`--output-dir`、`--json`）
 
-**CLI 输出**：非 json 时打印摘要——`as_of`、候选因子数、簇数、每簇代表与成员、skipped；`--json` 输出 `{"as_of", "factors", "skipped", "clusters": [[cid, rep, members]], "outputs": {...}}`。
+**CLI 输出**：非 json 时打印摘要——`as_of`、候选因子数、簇数、每簇代表与成员、skipped；`--json` 输出 `{"as_of", "factors", "skipped", "clusters": [{"cluster_id", "representative", "members"}], "outputs": {...}}`（clusters 为 list of dicts，与参考实现一致）。
 
 - [ ] **Step 1: 写失败测试**
 
