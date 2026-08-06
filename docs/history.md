@@ -1595,3 +1595,19 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 - 全量单测 **1116 passed**（Phase B 新增 24：oos 15 + factor_oos 5 + OOS 绘图 2 + clean-b CLI 2），ruff 干净
 - commits（`23e8651..HEAD`，9 个）：`c8e5caa`(窗口)→`d3f6f68`(选因子+test 统计)→`1e9a6a4`(零分布)→`f7721a9`(零分布测试, review fix)→`5305f03`(OOS 绘图)→`2d5aa06`(编排)→`62be7a6`(守卫+校验, review fix)→`8cff926`(绘图测试)→`3dc88f7`(CLI+配置)
 - 真实验证（真实 state.parquet + 全市场 ohlcv 跑 `yq factor clean-b`、核验收敛结果、PNG 落盘）由 Task 8 执行，结果在本节补记
+
+### Task 8：全市场 OOS 真实验证（2026-08-06）
+
+- **命令**：`yq factor clean-b --state data/audit/factor_monitor_full/state.parquet --data data/clean/full_market_ohlcv.parquet --output-dir data/audit/factor_oos_b --json`（exit 0，运行约 14 分钟；工具 2 分钟前台超时，经 nohup 后台跑完，stderr 仅存量 FutureWarning 无报错）
+- **窗口**：train 12 个月 / test 1 个月 / top_k 5 / bootstrap_iters 200 / t_window 60（`configs/factor_clean.yaml` Phase B 段默认）
+- **结果**：**23 期**，13 期有入选，入选因子 **31** 个；**overall_win_rate = 0.742**（23/31 win）、**overall_sig_rate = 0.774**、**null_95_mean = 7.36**
+- **每因子胜率**（win = test 期显著且方向保持）：
+  - calc_close_vol_rank_cov_5d 9/10 = 0.90
+  - calc_amihud 4/5 = 0.80
+  - calc_high_vol_rank_corr_3d 3/4 = 0.75
+  - calc_open_vol_corr_10d 2/3 = 0.67
+  - calc_vwap_vol_rank_corr_5d 3/3 = 1.00
+  - calc_vwap_close_ratio 2/5 = 0.40
+  - calc_williams_r_smoothed_6d 0/1 = 0.00
+- **如实记录：整体胜率 74.2% 明显 > 50%**（31 样本二项检验 z≈2.69、单侧 p≈0.005，统计上偏离随机）。但小样本下结论需谨慎：23 期中 **10 期无入选**（train 段无因子过 null_95 门槛，selected=0 不贡献胜率样本），入选集中在 13 期、每期 1-5 个；胜率时段聚集——2024-12 后各期（8-14 期）0.6-1.0 高胜率，早期（1-7 期）0.0-1.0 波动大；入选因子 train_t 全部为正（31/31），未见负方向入选。**解释方向**：样本量小（31）+ 候选因子数少 + 入选期稀疏，高位胜率或由后段少数强 IC 期驱动，不构成"选择机制有信息"的稳健证据；按设计 §5.4 不擅自改参数，待更大样本（更长历史 / 更多候选）复核后由用户裁决
+- **产出**：`data/audit/factor_oos_b/`（oos_results.parquet + oos_summary.json + oos_winrate.png + oos_bootstrap.png + stderr.log）
