@@ -56,13 +56,13 @@
 - 配对专用因子（**kind="pair"**：`calc_spread` / `calc_spread_zscore` / `calc_coint_pvalue` / `calc_half_life` / `kalman_filter_hedge_ratio`）签名与单股票因子不同（双 DataFrame / Series / ndarray 输入，float/ndarray 输出），仅按名发现（`get_factor`），由调用方按配对接口直接调用，不参与 `run_factor` / `calc_factors`。
 - 带参因子（`calc_rsi` / `calc_volume_ratio` / `calc_atr` / `calc_hv` 的 `window` 等）默认参数从函数签名自动提取，`run_factor` 时可用 kwargs 覆盖。
 
-### 因子结果缓存（cache.py）
+### 因子结果缓存（factors/ops/cache.py）
 
 - 位置：`data/factors/{因子名}/{参数哈希}_{数据指纹}.parquet`（目录可用 `FACTOR_CACHE_DIR` 环境变量覆盖）。
 - 缓存键 = (因子名, 参数哈希, 数据指纹)：调参、数据范围/内容变化均不命中旧缓存；数据指纹基于排序后非 date/code 列的内容哈希，与行顺序无关。
 - 原子写（tmp + rename）；`clear_factor_cache(name=None, cache_dir=None)` 可清理；`run_factor(..., use_cache=False)` 禁用。
 
-### 因子评估（evaluation.py）
+### 因子评估（factors/ops/evaluation.py）
 
 > 因子预测力的标准化评估工具（IC / IR / forward return / 分层回测），纯 DataFrame 输出，不依赖交易管线与绘图库。输入 `factor_df`（宽表，含 date/code/因子列，任意行序）+ `price_df`（date/code/close，可省略——缺省从 factor_df 的 close 列取）；**所有返回与输入逐行对齐**。
 
@@ -212,7 +212,7 @@
 | status | str | pending/filled/cancelled/rejected |
 | timestamp | datetime64 | 下单时间 |
 
-## 行业中性化 — factors.neutralize 模块
+## 行业中性化 — factors.ops.neutralize 模块
 
 > **Warning**: 当前使用 Tushare `stock_basic` 的最新行业分类快照（申万一级）。
 > 在长期回测（如 2016-2026）中，公司行业分类可能已发生变更，存在近似前视偏差。

@@ -16,19 +16,19 @@
 | data (股票池) | ✅ 完成 | universe.py + resolve_universe/apply_data_filters + 24 tests |
 | data (指数成分股) | ✅ 完成 | fetcher.py: fetch_index_constituents + fetch_daily_batch + 18 tests |
 | data (CSI 500 配置) | ✅ 完成 | csi500.yaml: source=index 动态获取 + 管道测试 4 tests |
-| factors (HV) | ✅ 完成 | volatility.py + 6 tests |
+| factors (HV) | ✅ 完成 | builtin/volatility.py + 6 tests |
 | factors (量价) | ✅ 完成 | RSI/OBV/成交量比率/ATR + 24 tests |
-| factors (协整) | ✅ 完成 | cointegration.py + 22 tests |
+| factors (协整) | ✅ 完成 | builtin/cointegration.py + 22 tests |
 | factors (GTJA 算子库) | ✅ 完成 | operators.py: 11 算子 (delay/delta/rolling_mean/std/sum/sma/corr/rank/ts_max/ts_min/rolling_cov) + 39 tests |
-| factors (GTJA 动量) | ✅ 完成 | momentum.py: 5 因子 (#14/#18/#20/#88/#106) + 26 tests |
-| factors (GTJA 均值回归) | ✅ 完成 | mean_reversion.py: 4 因子 (#63/#79/#112/#128) + 14 tests |
-| factors (GTJA 量价) | ✅ 完成 | volume_price_gtja.py: 18 因子 + 36 tests |
-| factors (GTJA 波动率) | ✅ 完成 | volatility_gtja.py: 5 因子 (#78/#97/#100/#161/#175) |
-| factors (GTJA VWAP) | ✅ 完成 | vwap.py: 2 因子 (#120/#124) |
-| factors (GTJA 趋势) | ✅ 完成 | trend.py: 3 因子 (#21/#116/#89) |
+| factors (GTJA 动量) | ✅ 完成 | builtin/momentum.py: 5 因子 (#14/#18/#20/#88/#106) + 26 tests |
+| factors (GTJA 均值回归) | ✅ 完成 | builtin/mean_reversion.py: 4 因子 (#63/#79/#112/#128) + 14 tests |
+| factors (GTJA 量价) | ✅ 完成 | builtin/volume_price_gtja.py: 18 因子 + 36 tests |
+| factors (GTJA 波动率) | ✅ 完成 | builtin/volatility_gtja.py: 5 因子 (#78/#97/#100/#161/#175) |
+| factors (GTJA VWAP) | ✅ 完成 | builtin/vwap.py: 2 因子 (#120/#124) |
+| factors (GTJA 趋势) | ✅ 完成 | builtin/trend.py: 3 因子 (#21/#116/#89) |
 | factors (注册表) | ✅ 完成 | registry.py: 93 条目（51 single + 5 pair + 37 别名）, 名称/别名/tag/kind 过滤 + run_factor 缓存 + 41 tests |
-| factors (结果缓存) | ✅ 完成 | cache.py: 磁盘 parquet 缓存，键=(因子名, 参数哈希, 数据指纹) + 7 tests |
-| factors (因子评估) | ✅ 完成 | evaluation.py: IC/IR + forward return + 分层回测 + 批量比较表 + 30 tests |
+| factors (结果缓存) | ✅ 完成 | ops/cache.py: 磁盘 parquet 缓存，键=(因子名, 参数哈希, 数据指纹) + 7 tests |
+| factors (因子评估) | ✅ 完成 | ops/evaluation.py: IC/IR + forward return + 分层回测 + 批量比较表 + 30 tests |
 | CLI (yq) | ✅ 完成 | yq 包: factor list(含 --verbose 因子介绍)/run/evaluate + cache info/clear，typer 实现，文本/--json 双输出，python -m + console script 双入口，notebooks/icir_factor_screening.py 一键筛查 + 39 tests |
 | strategies (均值回归) | ✅ 完成 | builtin/mean_reversion.py + 8 tests |
 | strategies (RSI 反转) | ✅ 完成 | builtin/rsi_reversal.py + 10 tests |
@@ -64,18 +64,19 @@
 | config (YAML) | ✅ 完成 | loader + build_strategies/build_risk_engine/build_regime_switch + 12 tests |
 | context (regime 检测) | ✅ 完成 | breadth + 自适应波动率 + EMA + 持续期 + 指数过滤 + 19 tests |
 | context (regime switch) | ✅ 完成 | RegimeSwitchStrategy + confirmation_lag(10) + build_regime_switch |
-| factors (行业中性化) | ✅ 完成 | neutralize.py: 截面去均值 + min_peers 动态降级 + 18 tests |
+| factors (行业中性化) | ✅ 完成 | ops/neutralize.py: 截面去均值 + min_peers 动态降级 + 18 tests |
 | portfolio (持仓平滑) | ✅ 完成 | smoother.py: 宽表状态机逐日递推 + 死区拦截 + 14 tests |
 | strategies (twin-star combiner) | ✅ 完成 | threshold=0.5 AND-gate 共识过滤 + 中性化 → Sharpe 0.820 |
 | context (股票选择器) | ✅ 完成 | stock_selector.py: 因子质量评估 + 动态股票池筛选 + 40 tests |
 | data (盈利断层) | ✅ 完成 | earnings.py: PIT 滚动池 + Z-Score 标准化 + 27 tests |
-| factors (盈利断层) | ✅ 完成 | earnings.py: calc_earnings_surprise + calc_earnings_acceleration + 7 tests |
+| factors (盈利断层) | ✅ 完成 | builtin/earnings.py: calc_earnings_surprise + calc_earnings_acceleration + 7 tests |
 | strategies (盈利断层) | ✅ 完成 | earnings_surprise.py: GTJAEarningsSurpriseStrategy + 12 tests |
-| factors (价值) | ✅ 完成 | value.py: calc_ep(EP=1/PE) + calc_bp(BP=1/PB) + 17 tests |
-| factors (流动性) | ✅ 完成 | liquidity.py: calc_amihud + calc_turnover + 13 tests |
+| factors (价值) | ✅ 完成 | builtin/value.py: calc_ep(EP=1/PE) + calc_bp(BP=1/PB) + 17 tests |
+| factors (流动性) | ✅ 完成 | builtin/liquidity.py: calc_amihud + calc_turnover + 13 tests |
 | data (季度财务) | ✅ 完成 | fundamentals_quarterly.py: fina_indicator PIT 面板 + 7 tests |
 | data (交易日历) | ✅ 完成 | trade_calendar.py: 权威交易日历（tushare trade_cal + parquet 缓存）+ 19 tests |
-| factors (质量) | ✅ 完成 | quality.py: roe_level + roe_stability + cashflow_quality + 10 tests |
+| factors (质量) | ✅ 完成 | builtin/quality.py: roe_level + roe_stability + cashflow_quality + 10 tests |
+| factors (分层) | ✅ 完成 | Phase 0: builtin/(13 因子实现) + ops/(评估/中性化/缓存) 分层；顶层 re-export 兼容 + 1058 单测 + 30 pipeline |
 | strategies (基本面组合) | ✅ 完成 | fundamental_diversified.py: 3 因子 IR 加权（评估后从 9 个候选中筛选）+ YAML 配置 |
 | context (因子选择) | 🔲 路线图 | 输入行情 → 输出因子组合 |
 | context (参数路由) | ✅ 完成 | param_router.py: per-regime rebalance/top_n 路由 + 10 tests |
@@ -108,19 +109,27 @@ src/
 │   ├── universe.py              # 股票池解析与过滤
 │   └── ...
 ├── factors/
+│   ├── __init__.py              # 顶层 re-export（from factors import X 兼容）
+│   ├── registry.py              # 因子注册表 (93 条目: 88 single + 5 pair) + run_factor/calc_factors
 │   ├── operators.py             # GTJA 基础算子 (11 个)
-│   ├── momentum.py              # GTJA 动量因子 (5)
-│   ├── mean_reversion.py        # GTJA 均值回归因子 (4)
-│   ├── volume_price_gtja.py     # GTJA 量价/情绪/资金流因子 (18)
-│   ├── volatility_gtja.py       # GTJA 波动率因子 (5)
-│   ├── vwap.py                  # GTJA VWAP 因子 (2)
-│   ├── trend.py                 # GTJA 趋势因子 (3)
-│   ├── volume_price.py          # 通用量价因子 (RSI/OBV/ATR/VR)
-│   ├── volatility.py            # HV 因子
-│   ├── evaluation.py            # 因子评估 (IC/IR/forward return/分层回测)
-│   ├── cache.py                 # 因子结果磁盘缓存 (parquet, 键含参数哈希+数据指纹)
-│   ├── cointegration.py         # 协整/半衰期/Kalman Filter (pair 专用)
-│   └── registry.py              # 因子注册表 (93 条目: 51 single + 5 pair + 37 别名)
+│   ├── builtin/                 # 因子实现 (13 个，只依赖 operators + pandas)
+│   │   ├── momentum.py          # GTJA 动量因子 (5)
+│   │   ├── mean_reversion.py    # GTJA 均值回归因子 (4)
+│   │   ├── volume_price_gtja.py # GTJA 量价/情绪/资金流因子 (18)
+│   │   ├── volatility_gtja.py   # GTJA 波动率因子 (5)
+│   │   ├── vwap.py              # GTJA VWAP 因子 (2)
+│   │   ├── trend.py             # GTJA 趋势因子 (3)
+│   │   ├── volume_price.py      # 通用量价因子 (RSI/OBV/ATR/VR)
+│   │   ├── volatility.py        # HV 因子
+│   │   ├── cointegration.py     # 协整/半衰期/Kalman Filter (pair 专用)
+│   │   ├── earnings.py          # 盈利断层因子
+│   │   ├── value.py             # 价值因子 (EP/BP)
+│   │   ├── quality.py           # 质量因子 (ROE/现金流)
+│   │   └── liquidity.py         # 流动性因子 (Amihud/换手)
+│   └── ops/                     # 对因子的操作（评估/中性化/缓存 + 后续清洗）
+│       ├── evaluation.py        # 因子评估 (IC/IR/forward return/分层/滚动统计)
+│       ├── neutralize.py        # 行业中性化
+│       └── cache.py             # 因子结果磁盘缓存 (parquet, 键含参数哈希+数据指纹)
 ├── yq/                          # 命令行工具 (typer)
 │   ├── cli.py                   # 根入口: factor/cache 子命令组 + --version
 │   ├── factors.py               # yq factor list/run/evaluate

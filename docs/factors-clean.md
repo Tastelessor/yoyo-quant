@@ -87,7 +87,7 @@ src/factors/
 ├── __init__.py          # 顶层导出（保持旧 import 兼容）
 ├── registry.py          # 注册表 + 动态发现 + run_factor（调度入口，留顶层）
 ├── operators.py         # GTJA 算子原语（留顶层，被所有因子依赖）
-├── builtin/             # 因子实现（15 个文件，只依赖 operators + pandas；
+├── builtin/             # 因子实现（13 个文件，只依赖 operators + pandas；
 │   │                    #   命名对齐 strategies/builtin/ 先例）
 │   ├── momentum.py  volume_price_gtja.py  volatility_gtja.py
 │   ├── mean_reversion.py  trend.py  vwap.py  volatility.py  volume_price.py
@@ -101,12 +101,12 @@ src/factors/
     └── synth.py         # Phase C：合成信号（新增）
 ```
 
-**影响面（已查耦合）**：
-- 外部 import：17 个文件（strategies×16、yq×2、analysis×2、context×1、backtest×1）依赖 `factors.*` 各模块；`registry._register_defaults` 在函数内延迟 import 15 个因子文件
-- 测试：`tests/factors/` 16 个测试文件 + `tests/test_evaluation_rolling.py` 的 import 路径需同步
-- 兼容策略：`__init__.py` 保持顶层导出（如 `from factors.ops.evaluation import compute_ic`），外部旧 import 不破；新代码按新分层 import
+**影响面（已查耦合，实测）**：
+- factors 内部：19 个 `.py` = 顶层 3（__init__/registry/operators）+ builtin 13 + ops 3（evaluation/neutralize/cache）；`registry._register_defaults` 在函数内延迟 import 13 个因子文件 + 模块级 1 处 cache
+- src/ 外部 import：18 个文件依赖 `factors.*`，其中 **12 个需改子模块路径**（其余 6 个只 import registry/operators，保持原位）；tests 15 个文件需改
+- 兼容策略：`__init__.py` 保持**顶层 re-export**（`from factors import compute_ic` 可用）；子模块路径 import（`from factors.evaluation import X`）**全量更新**为新分层（Python 对 `from A.B import C` 不 fallback 到包属性，无法兼容）
 
-**验收**：全部旧 import 路径在新结构下可用；`import factors` 与 `from factors import compute_ic` 等旧写法不报错；全量测试通过；registry 动态发现数量不变（93 条目）。
+**验收（Phase 0 实测通过）**：`from factors import compute_ic` 可用；`list_factors()` 仍 93（single 88 / pair 5）；`run_factor` 磁盘缓存按因子名 key 不受影响；全量 1058 + 30 pipeline passed；16 个文件 git rename 可追溯。
 
 ## 4. Phase A：因子相关性分析 + 去冗余
 

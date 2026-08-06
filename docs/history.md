@@ -1508,3 +1508,24 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
   - **默认阈值保持不变**：--t-active 2.0 / --t-decay 1.0 / --ir-active-line 0.7 / --ir-dead-line 0.3
 - **产出**：`data/audit/factor_monitor_full/state.parquet`（1.35MB）+ `figures/`（heatmap + 80 张 lifecycle PNG）
 - 全量单测 **1054 passed**，ruff 干净
+
+## Phase 26: factors 目录分层重构（2026-08-06）
+
+### 决策记录
+- **动机**：`src/factors/` 扁平化，因子实现 / 算子原语 / 元功能（评估、中性化、缓存、调度）混杂同一层 19 个文件；且 Phase A/B/C 因子清洗（factors-clean 设计）需要明确归属
+- **分层原则**：每层只依赖下层，无反向依赖。顶层只留调度（registry）与算子原语（operators）；因子实现进 `factors/builtin/`（13 个，只依赖 operators + pandas，命名对齐 strategies/builtin/ 先例）；对因子的操作进 `factors/ops/`（evaluation / neutralize / cache 迁入，Phase A/B/C 的 correlation/oos/synth 后续落这里）
+- **设计修订（吸收审阅意见）**：Phase A/B/C 的清洗操作属于"对因子的操作"，放 `factors/ops/` 而非 analysis 层；analysis 只保留业务编排（factor_monitor）
+- **关键技术事实**：`from factors.evaluation import X` 无法靠 `__init__.py` 属性兼容（CPython 对 `from A.B import C` 不 fallback 到包属性）→ 子模块路径 import 全量更新，`__init__.py` 只保证顶层 re-export（`from factors import compute_ic`）
+- **磁盘缓存不失效**：run_factor 缓存 key 按因子名（非模块路径），迁移后命中不变
+
+### 影响面（实测）
+- factors 内部 19 个 `.py` = 顶层 3 + builtin 13 + ops 3；registry 内部 14 处 import（模块级 cache×1 + 函数内延迟 import 13 因子）
+- src/ 外部 import 18 文件（12 个需改子模块路径，6 个只 import registry/operators 不动）；tests 15 文件需改
+
+### 执行（TDD，5 task）
+- **Task 1**：`tests/factors/test_layering.py` 分层锚点（builtin/ops 可导入 + 顶层 re-export）失败先行 → `f20d6c8`
+- **Task 2**：git mv 16 文件（13 因子 → builtin/，3 操作 → ops/），全部 100% rename 可追溯 → `f8e0587`
+- **Task 3**：重写 `__init__.py` + 修正 registry 内部 import → 93/88 保持，layering+registry 30 passed → `a411165`
+- **Task 4**：批量替换外部 import（src 12 + tests 15 文件）零残留 → 全量 1058 + 30 pipeline → `4dc1a80`
+- **Task 5**：ruff 清理本任务引入的 5 处（__init__/registry/test_quality 的 I001 + E501，--fix 折行）；契约文档同步（factors-clean §3.4 实测数据、data-schemas 路径、project-plan 状态表+目录树）；存量 27 处 ruff 错误（builtin 内部 E501/N806、engine/test_pipeline 业务行）按先例不碰
+- 最终验收：`list_factors()` 93（single 88 / pair 5）不变；`from factors import compute_ic` 可用；全量 1058 单测 + 30 pipeline 绿；git 历史 16 rename
