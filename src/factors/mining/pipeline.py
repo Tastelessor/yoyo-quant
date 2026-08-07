@@ -23,8 +23,13 @@ DEFAULT_MONEYFLOW_FACTORS = [
 
 
 def _domain_for(row: pd.Series, t_active: float, layer_t: float) -> str | list[str]:
-    """适用域判定：全市场 t ≥ t_active → universal；否则列出显著层（Bonferroni）。"""
-    if row["all_t_stat"] >= t_active:
+    """适用域判定（双侧）：|全市场 t| ≥ t_active → universal；否则列出
+    |t| ≥ layer_t 的显著层（Bonferroni）。
+
+    双侧语义下负显著（如 big_net_ratio 全市场 t=-5.75）不再漏报为 none；
+    方向由 :func:`_sign_for` 标注（-1 = 负显著反转候选）。
+    """
+    if abs(row["all_t_stat"]) >= t_active:
         return "universal"
     sig = [
         c.replace("_t_stat", "")
@@ -32,9 +37,20 @@ def _domain_for(row: pd.Series, t_active: float, layer_t: float) -> str | list[s
         if c.endswith("_t_stat")
         and c != "all_t_stat"
         and pd.notna(row[c])
-        and row[c] >= layer_t
+        and abs(row[c]) >= layer_t
     ]
     return sig if sig else "none"
+
+
+def _sign_for(row: pd.Series, t_active: float, layer_t: float) -> int:
+    """方向标注：domain 为 "none" 时 0；否则 1（全市场 t > 0）/ -1（全市场 t < 0）。
+
+    与 :func:`_domain_for` 双侧判定一致：只要进入任一显著域（universal 或层列表），
+    方向即由全市场 t 的符号给出——负显著因子标记 -1，提示取反可作为反转信号。
+    """
+    if _domain_for(row, t_active, layer_t) == "none":
+        return 0
+    return 1 if row["all_t_stat"] > 0 else -1
 
 
 def run_mining_screen(
@@ -77,7 +93,9 @@ def run_mining_screen(
     -------
     dict
         键：screen（index=因子，列 = all_mean_ic/all_t_stat/all_n_days +
-        9 层 × {mean_ic,t_stat,n_days} + domain）、layers（层标签表）、summary。
+        9 层 × {mean_ic,t_stat,n_days} + domain + sign）、layers（层标签表）、summary
+        （每因子 {domain, sign}）。sign ∈ {-1, 0, 1}：0 = 无显著域，
+        1 = 正显著方向，-1 = 负显著（反转候选）；与双侧判定配套标注方向。
     """
     ohlcv = pd.read_parquet(ohlcv_path)
     ohlcv["date"] = pd.to_datetime(ohlcv["date"])
@@ -123,8 +141,12 @@ def run_mining_screen(
         rows[f] = flat
     screen = pd.DataFrame.from_dict(rows, orient="index")
     screen["domain"] = screen.apply(lambda r: _domain_for(r, t_active, layer_t), axis=1)
+    screen["sign"] = screen.apply(lambda r: _sign_for(r, t_active, layer_t), axis=1)
 
-    summary = {f: {"domain": screen.loc[f, "domain"]} for f in factor_names}
+    summary = {
+        f: {"domain": screen.loc[f, "domain"], "sign": int(screen.loc[f, "sign"])}
+        for f in factor_names
+    }
 
     if output_dir is not None:
         out = Path(output_dir)

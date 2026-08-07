@@ -1692,11 +1692,13 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 |------|------------|-----------|--------|---------------------|
 | `calc_moneyflow_net_ratio`（净流入强度） | **+0.0183** | **+3.99** | **universal** | small-high t=+10.19、mid-high t=+4.97 |
 | `calc_moneyflow_streak`（连续净流入天数） | -0.0015 | -0.41 | none | — |
-| `calc_moneyflow_big_net_ratio`（大单净占比） | -0.0128 | **-5.75** | none（见注） | small-high t=-13.29、mid-mid t=-8.19、mid-high t=-6.52、small-mid t=-5.91、large-mid t=-3.97、mid-low t=-3.09（均负） |
+| `calc_moneyflow_big_net_ratio`（大单净占比） | -0.0128 | **-5.75** | **universal（sign=-1）** | small-high t=-13.29、mid-mid t=-8.19、mid-high t=-6.52、small-mid t=-5.91、large-mid t=-3.97、mid-low t=-3.09（均负） |
+
+> 注：下表 domain 为 Phase 1 收尾扩展 A（`_domain_for` 双侧判定 + sign 标注）落地后的更新值——big_net_ratio 由 none 更新为 **universal（sign=-1）**，负显著不再漏报。
 
 - layers 分布：size {small 130.4 万, mid 130.4 万, large 130.4 万}、liq {low 130.4 万, mid 130.4 万, high 130.4 万}——三分位均匀 ✓
 - **结论**：
   1. **net_ratio 全市场显著为正（universal）**，且小盘高换手层显著更强（small-high t=10.19 vs 全市场 3.99）——资金流对小盘高换手品种更有效的**分层验证直接证据**，M1 基础设施价值兑现
   2. streak 无显著（连续流入天数信息量弱，符合"净额已含连续信息"直觉）
-  3. **big_net_ratio 全市场显著负相关（t=-5.75，6 层负显著）**：大单净占比越高、未来 5 日收益越低——与"大单出货/接盘"反指语义一致；但 `_domain_for` 为**单侧判定**（只认 `t ≥ t_active` / `t ≥ layer_t` 的正方向），负显著被判 none。这是计划给定逻辑（Task 6 逐字实现），**非擅自调参**；后续若将 big_net_ratio 取反使用（负 alpha → 反转信号），需扩展 `_domain_for` 支持双侧——记为用户后续可选方向
-- 验收：三因子全市场/分层显著性已如实记录；1/3 因子（net_ratio）有效且分层增强，2/3 无正显著（streak 无信息、big_net_ratio 负显著待反转评估）；未调参
+  3. **big_net_ratio 全市场显著负相关（t=-5.75，6 层负显著）**：大单净占比越高、未来 5 日收益越低——与"大单出货/接盘"反指语义一致。`_domain_for` 已扩展为**双侧判定**（|t| ≥ 阈值，负显著不再漏报）并标注 **sign=-1**（负 alpha → 反转候选，取反使用即正信号）——**已落地**（Phase 1 收尾扩展 A），不再是"后续可选方向"
+- 验收：三因子全市场/分层显著性已如实记录并标注方向：**net_ratio universal(+)、big_net_ratio universal(负，反转候选，sign=-1)、streak none**；未调参
