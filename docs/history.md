@@ -1654,7 +1654,7 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 
 ### 决策记录
 - **动机**：Phase A/B/C 全程基于量价同质因子，监控/去冗余/OOS/合成都在"价格-成交量相关"同一信号族内打转，边际信息已尽，需引入**另类数据源**（个股资金流 moneyflow）；同时量价因子天然是**条件因子**（小盘高换手层 vs 大盘低换手层强度可截然相反），全市场 IC 会"平均掉"分层信号——故先落地 **size×liquidity 分层验证**，防条件因子被全市场口径误杀
-- **分层口径**（用户确认，factor-mining-phase1-plan.md）：每日截面按 `circ_mv` / `turnover_rate` **三分位**（tercile）→ size ∈ {small, mid, large}、liq ∈ {low, mid, high}，正交 9 层；截面**相对分位**不用绝对阈值；维度事前定死、全层报告、禁止事后挑层；适用域判定：全市场 t ≥ t_active → "universal"，否则 Bonferroni 校正（9 层双侧，layer_t=2.81）下显著层列表，无 → "none"
+- **分层口径**（用户确认，factor-mining-phase1-plan.md）：每日截面按 `circ_mv` / `turnover_rate` **三分位**（tercile）→ size ∈ {small, mid, large}、liq ∈ {low, mid, high}，正交 9 层；截面**相对分位**不用绝对阈值；维度事前定死、全层报告、禁止事后挑层；适用域判定：全市场 \|t\| ≥ t_active → "universal"，否则 Bonferroni 校正（9 层双侧，layer_t=2.81）下显著层列表（\|t\| ≥ layer_t），无 → "none"；**方向由 sign 标注**（负显著不判 none，见 Task 9 补记与 commit `9354462`）
 - **接口事实**（已核实）：`moneyflow` 单次最大 6000 行、**2000 积分门槛**，金额单位**万元**，`net_mf_amount` 为官方净流入（基于 L2 主动买卖单，不可简单由大小单相加）；`daily_basic` 的 `circ_mv` 流通市值（**万元**，fetch_fundamentals 转亿元）、`turnover_rate` 换手率（%），单次最大 6000 行；用户积分 **15000 分**覆盖两者
 
 ### 执行（TDD，7 task）
