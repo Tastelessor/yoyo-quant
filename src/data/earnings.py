@@ -92,7 +92,10 @@ def fetch_forecast(
         raise ValueError("TUSHARE_TOKEN 未设置，请在 .env 中配置")
 
     if cache_dir is None:
-        cache_dir = Path(__file__).resolve().parents[2] / "data" / "raw" / "earnings" / "forecast"
+        cache_dir = (
+            Path(__file__).resolve().parents[2]
+            / "data" / "raw" / "earnings" / "forecast"
+        )
     else:
         cache_dir = Path(cache_dir)
 
@@ -102,7 +105,7 @@ def fetch_forecast(
         return pd.read_parquet(cache_file)
 
     api = ts.pro_api(token)
-    api._DataApi__http_url = _PROXY_URL
+    # api._DataApi__http_url = _PROXY_URL
 
     ts_fmt = _to_ts_code(code) if "." not in ts_code else ts_code
     raw = api.forecast(
@@ -113,7 +116,9 @@ def fetch_forecast(
 
     if raw is None or raw.empty:
         return pd.DataFrame(
-            columns=["code", "ann_date", "end_date", "forecast_type", "predicted_profit"]
+            columns=[
+                "code", "ann_date", "end_date", "forecast_type", "predicted_profit"
+            ]
         )
 
     df = raw.rename(columns={"ts_code": "code", "type": "forecast_type"})
@@ -123,7 +128,9 @@ def fetch_forecast(
         df[["net_profit_min", "net_profit_max"]].mean(axis=1, skipna=True)
     )
 
-    result = df[["code", "ann_date", "end_date", "forecast_type", "predicted_profit"]].copy()
+    result = df[
+        ["code", "ann_date", "end_date", "forecast_type", "predicted_profit"]
+    ].copy()
     cache_dir.mkdir(parents=True, exist_ok=True)
     result.to_parquet(cache_file, index=False)
     return result
@@ -152,7 +159,10 @@ def fetch_express(
         raise ValueError("TUSHARE_TOKEN 未设置，请在 .env 中配置")
 
     if cache_dir is None:
-        cache_dir = Path(__file__).resolve().parents[2] / "data" / "raw" / "earnings" / "express"
+        cache_dir = (
+            Path(__file__).resolve().parents[2]
+            / "data" / "raw" / "earnings" / "express"
+        )
     else:
         cache_dir = Path(cache_dir)
 
@@ -162,7 +172,7 @@ def fetch_express(
         return pd.read_parquet(cache_file)
 
     api = ts.pro_api(token)
-    api._DataApi__http_url = _PROXY_URL
+    # api._DataApi__http_url = _PROXY_URL
 
     ts_fmt = _to_ts_code(code) if "." not in ts_code else ts_code
     raw = api.express(
@@ -191,7 +201,9 @@ def fetch_express(
     if "increase_rate" not in df.columns:
         df["increase_rate"] = np.nan
 
-    result = df[["code", "ann_date", "end_date", "actual_profit", "increase_rate"]].copy()
+    result = df[
+        ["code", "ann_date", "end_date", "actual_profit", "increase_rate"]
+    ].copy()
     cache_dir.mkdir(parents=True, exist_ok=True)
     result.to_parquet(cache_file, index=False)
     return result
@@ -296,7 +308,8 @@ def _compute_pit_surprise(events_df: pd.DataFrame) -> pd.DataFrame:
     df["code"] = df["code"].astype(str)
     df = df.sort_values(["ann_date", "end_date"]).reset_index(drop=True)
 
-    # Pools: {end_date: {code: {"predicted": float, "actual": float, "forecast_type": str}}}
+    # Pools: {end_date: {code: {"predicted": float, "actual": float,
+    #                        "forecast_type": str}}}
     pools: dict[str, dict[str, dict]] = {}
 
     raw_surprise = np.full(len(df), np.nan)
@@ -441,9 +454,13 @@ def build_earnings_panel(
 
         # Only Z-Score where count >= 2 and std > 0
         do_zscore = (non_nan_count >= 2) & (stds > 0)
-        z = np.where(do_zscore, np.clip((panel[col] - means) / stds, -3.0, 3.0), panel[col])
+        z = np.where(
+            do_zscore, np.clip((panel[col] - means) / stds, -3.0, 3.0), panel[col]
+        )
         panel[col] = pd.Series(z, index=panel.index).fillna(0.0)
 
-    return panel[["date", "code", "earnings_surprise", "earnings_acceleration"]].sort_values(
-        ["date", "code"]
-    ).reset_index(drop=True)
+    return (
+        panel[["date", "code", "earnings_surprise", "earnings_acceleration"]]
+        .sort_values(["date", "code"])
+        .reset_index(drop=True)
+    )

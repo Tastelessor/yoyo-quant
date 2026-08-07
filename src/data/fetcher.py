@@ -49,7 +49,7 @@ def fetch_daily(code: str, start: str, end: str) -> pd.DataFrame:
         raise ValueError("TUSHARE_TOKEN 未设置，请在 .env 中配置")
 
     api = ts.pro_api(token)
-    api._DataApi__http_url = _PROXY_URL
+    # api._DataApi__http_url = _PROXY_URL
 
     ts_code = _to_ts_code(code)
 
@@ -129,7 +129,7 @@ def fetch_index_daily(code: str, start: str, end: str) -> pd.DataFrame:
         raise ValueError("TUSHARE_TOKEN 未设置，请在 .env 中配置")
 
     api = ts.pro_api(token)
-    api._DataApi__http_url = _PROXY_URL
+    # api._DataApi__http_url = _PROXY_URL
 
     ts_code = _to_ts_code(code)
     raw = api.index_daily(
@@ -197,7 +197,7 @@ def fetch_index_constituents(
         return list(cached["code"])
 
     api = ts.pro_api(token)
-    api._DataApi__http_url = _PROXY_URL
+    # api._DataApi__http_url = _PROXY_URL
 
     raw = api.index_weight(index_code=index_code)
 
@@ -361,7 +361,7 @@ def fetch_all_stocks(
         return pd.read_parquet(cache_file)
 
     api = ts.pro_api(token)
-    api._DataApi__http_url = _PROXY_URL
+    # api._DataApi__http_url = _PROXY_URL
 
     raw = api.stock_basic(
         exchange="",
@@ -430,7 +430,7 @@ def fetch_fundamentals(
             return df
 
     api = ts.pro_api(token)
-    api._DataApi__http_url = _PROXY_URL
+    # api._DataApi__http_url = _PROXY_URL
 
     raw = api.daily_basic(
         trade_date=date_str,

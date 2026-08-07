@@ -77,7 +77,7 @@ def fetch_moneyflow_by_date(
         return pd.read_parquet(cache_file)
 
     api = ts.pro_api(token)
-    api._DataApi__http_url = _PROXY_URL
+    # api._DataApi__http_url = _PROXY_URL
     raw = api.moneyflow(trade_date=date_str)
 
     if raw is None or raw.empty:
