@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from factors.mining.pipeline import run_mining_screen
+from factors.mining.pipeline import _domain_for, run_mining_screen
 
 
 def _ohlcv(n_days=40, n_stocks=12, seed=0):
@@ -129,3 +129,57 @@ def test_run_mining_screen_all_three_factors(tmp_path):
         "calc_moneyflow_streak",
         "calc_moneyflow_big_net_ratio",
     ]
+
+
+# --- _domain_for 适用域判定：确定性单测（核心业务逻辑，直接测私有函数） ---
+
+
+def test_domain_for_universal_short_circuit():
+    # all_t_stat >= t_active → 直接 universal，不再评估各层
+    row = pd.Series(
+        {
+            "all_t_stat": 2.5,           # >= 2.0 → universal
+            "small-high_t_stat": 0.5,    # 即使层不达标也忽略
+            "mid-low_t_stat": 0.8,
+        }
+    )
+    assert _domain_for(row, t_active=2.0, layer_t=2.81) == "universal"
+
+
+def test_domain_for_significant_layers_only():
+    # all_t_stat < t_active，仅返回 t_stat >= layer_t 的层名（按列序）
+    row = pd.Series(
+        {
+            "all_t_stat": 1.5,           # < 2.0 → 走层列表分支
+            "small-high_t_stat": 3.2,    # 达标
+            "mid-low_t_stat": 2.0,       # 不达标
+            "big-high_t_stat": 2.0,      # 不达标
+        }
+    )
+    assert _domain_for(row, t_active=2.0, layer_t=2.81) == ["small-high"]
+
+
+def test_domain_for_none():
+    # all_t_stat 与所有层均不达标 → "none"
+    row = pd.Series(
+        {
+            "all_t_stat": 1.0,
+            "small-high_t_stat": 1.8,
+            "mid-low_t_stat": 2.0,
+            "big-low_t_stat": 0.5,
+        }
+    )
+    assert _domain_for(row, t_active=2.0, layer_t=2.81) == "none"
+
+
+def test_domain_for_boundary_nan_and_exact_threshold():
+    # NaN 层不误入列表；t_stat 恰好等于 layer_t 算达标
+    row = pd.Series(
+        {
+            "all_t_stat": 1.0,
+            "small-high_t_stat": 2.81,    # 恰好等于 layer_t → 达标
+            "mid-low_t_stat": np.nan,     # NaN → 不误入列表
+            "big-low_t_stat": 2.80,       # 差一点 → 不达标
+        }
+    )
+    assert _domain_for(row, t_active=2.0, layer_t=2.81) == ["small-high"]
