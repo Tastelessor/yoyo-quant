@@ -1668,6 +1668,35 @@ drawdown <= threshold           →  exposure = min_exposure（最小）
 
 ### 测试与提交
 - 全量单测 **1168 passed**（0 failed，50.38s；期望 1142 + 新增 ≈ 1165，实测多 3 个），ruff 干净
-- commits（`1effc91..HEAD`，11 个）：`f50f292`(fetch_fundamentals 扩展)→`1b7a38c`(缓存校验)→`5bce540`(分层标签原语)→`c5fae4b`(分位降级测试)→`cfde6fe`(分层 IC 原语)→`de60123`(moneyflow 管线)→`a90363a`(资金流因子族)→`1a732a4`(registry 清理修复)→`6add0e6`(分层验证编排)→`d27dde1`(因子列赋值修复)→`cb5a1a8`(mining CLI+配置)
+- commits（Task 1-7 共 11 个）：`f50f292`(fetch_fundamentals 扩展)→`1b7a38c`(缓存校验)→`5bce540`(分层标签原语)→`c5fae4b`(分位降级测试)→`cfde6fe`(分层 IC 原语)→`de60123`(moneyflow 管线)→`a90363a`(资金流因子族)→`1a732a4`(registry 清理修复)→`6add0e6`(分层验证编排)→`d27dde1`(因子列赋值修复)→`cb5a1a8`(mining CLI+配置)；另含 Task 8 契约同步 `2a8c5ba` + ruff format `41498cd` + 数据源切官方接口 `6773583`
 - 契约同步（Task 8）：data-schemas.md 追加 Phase 挖掘 M1 schema 段、project-plan.md 更新 context (因子选择) 行、factors-clean.md 新增 §7（分层验证 + 另类数据源）
 - 真实验证（真实 daily_basic + moneyflow 全市场数据跑 `yq factor mining-screen`、核对 9 层 IC 与适用域标签）由 Task 9 执行，结果见本节"Task 9"补记段
+
+### Task 9 补记：数据源事件 + 全市场真实验证结果（2026-08-06）
+
+**数据源切换事件（重要，影响后续所有真实拉取）**：
+- 原 proxy `quantdata888.duckdns.org`（模块级 `_PROXY_URL`，fetcher/earnings/moneyflow 共用）当日宕机：DNS 正常（38.76.160.225）、TCP 被拒；走系统代理（127.0.0.1 Clash）间歇可用（当日仅约 290 天窗口缓存升级成功）、`NO_PROXY` 直连被 RST（本地网络屏蔽该 IP）
+- 尝试替代通道 datahubco.com 网关（用户提供，tushare 兼容接口）：`daily_basic` / `moneyflow` 字段与项目契约完全一致，但限频实测 **~1次/分钟**（40203；错误消息单位不稳定），726 天 × 2 接口需 ~24h，放弃
+- **最终方案（用户确认）**：tushare 官方 token + 官方接口。`.env` token 已换为官方 token（56 字符）；`src/data/fetcher.py` / `earnings.py` / `moneyflow.py` 中全部 8 处 `api._DataApi__http_url = _PROXY_URL` 注释掉（tushare 客户端默认走官方 `api.tushare.pro`）→ commit `6773583`
+- 拉取实测：官方接口下 daily_basic 全窗口 **8 分钟**（第 1 轮 724 + 第 2 轮补 2），moneyflow **18 分钟**（722 + 4），无限频（15000 积分，~40 次/分钟远低于上限）；偶发 ReadTimeout（走系统代理 127.0.0.1:10808）由多轮重试补齐
+
+**真实验证执行**：
+- 窗口：2023-08-07 ~ 2026-08-05（726 交易日，与 ohlcv 同窗口）
+- 数据：daily_basic 391 万行（`data/audit/factor_mining_m1/basic.parquet`，circ_mv/turnover_rate 无 NaN）；moneyflow 372 万行（`moneyflow.parquet`）；ohlcv 354 万行（既有 `full_market_ohlcv.parquet`）
+- 命令：`.venv/bin/yq factor mining-screen --data ... --basic ... --moneyflow ... --output-dir data/audit/factor_mining_m1 --json`
+- 产物：`screen.parquet` / `layers.parquet` / `summary.json`（data/audit/factor_mining_m1/）
+
+**结果（全市场 + 9 层 IC，fwd_window=5，min_obs=5，min_days=10，t_active=2.0，layer_t=2.81）**：
+
+| 因子 | all_mean_ic | all_t_stat | domain | 显著层（\|t\|≥2.81） |
+|------|------------|-----------|--------|---------------------|
+| `calc_moneyflow_net_ratio`（净流入强度） | **+0.0183** | **+3.99** | **universal** | small-high t=+10.19、mid-high t=+4.97 |
+| `calc_moneyflow_streak`（连续净流入天数） | -0.0015 | -0.41 | none | — |
+| `calc_moneyflow_big_net_ratio`（大单净占比） | -0.0128 | **-5.75** | none（见注） | small-high t=-13.29、mid-mid t=-8.19、mid-high t=-6.52、small-mid t=-5.91、large-mid t=-3.97、mid-low t=-3.09（均负） |
+
+- layers 分布：size {small 130.4 万, mid 130.4 万, large 130.4 万}、liq {low 130.4 万, mid 130.4 万, high 130.4 万}——三分位均匀 ✓
+- **结论**：
+  1. **net_ratio 全市场显著为正（universal）**，且小盘高换手层显著更强（small-high t=10.19 vs 全市场 3.99）——资金流对小盘高换手品种更有效的**分层验证直接证据**，M1 基础设施价值兑现
+  2. streak 无显著（连续流入天数信息量弱，符合"净额已含连续信息"直觉）
+  3. **big_net_ratio 全市场显著负相关（t=-5.75，6 层负显著）**：大单净占比越高、未来 5 日收益越低——与"大单出货/接盘"反指语义一致；但 `_domain_for` 为**单侧判定**（只认 `t ≥ t_active` / `t ≥ layer_t` 的正方向），负显著被判 none。这是计划给定逻辑（Task 6 逐字实现），**非擅自调参**；后续若将 big_net_ratio 取反使用（负 alpha → 反转信号），需扩展 `_domain_for` 支持双侧——记为用户后续可选方向
+- 验收：三因子全市场/分层显著性已如实记录；1/3 因子（net_ratio）有效且分层增强，2/3 无正显著（streak 无信息、big_net_ratio 负显著待反转评估）；未调参
